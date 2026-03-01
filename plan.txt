@@ -1,0 +1,819 @@
+You’re essentially describing an internal workforce management system — Attendance + Task Tracking + Leave Workflow + Geo/IP validation.
+
+Below is a structured enterprise-level design blueprint (modules, architecture, DB schema, and technical decisions).
+
+1️⃣ High-Level System Architecture
+Core Modules
+
+Authentication & RBAC
+
+Employee
+
+Admin
+
+(Optional) HR / Manager
+
+Attendance Management
+
+Check-in / Check-out
+
+Auto working hours calculation
+
+IP validation
+
+Geo-fencing validation
+
+Task Management
+
+Daily tasks
+
+Status: Pending / In Progress / Completed
+
+Highlight today’s tasks
+
+Progress tracking
+
+Leave & WFH Workflow
+
+Leave request
+
+Half-day
+
+Work-from-home
+
+Admin approval flow
+
+Calendar & Holiday Engine
+
+Admin sets monthly calendar
+
+Public holidays
+
+Weekend auto-mark
+
+Custom company events
+
+Reports & Analytics
+
+Monthly attendance report
+
+Work progress report
+
+Leave balance report
+
+Late arrival report
+
+
+
+
+
+
+🔐 1️⃣ Authentication & Login System
+Login Methods
+1. Email + Password
+
+bcrypt (12 rounds)
+
+JWT (15 min access)
+
+Refresh token in Redis
+
+2. Google Login (OAuth2)
+
+Flow:
+
+Frontend → Google OAuth
+→ Backend verifies Google token
+→ If email exists → login
+→ Else → create user (if allowed)
+
+Store:
+
+provider ENUM('local','google')
+provider_id VARCHAR
+3. Login with IP restriction
+
+On login:
+
+Check user IP against allowed office IP range
+
+If outside → reject OR mark as remote-login
+
+Store in organization_settings:
+
+allowed_ip_range VARCHAR
+ip_login_required BOOLEAN
+4. Login with Location (GPS)
+
+Frontend:
+
+navigator.geolocation.getCurrentPosition()
+
+Backend:
+
+Haversine validation (100m)
+
+If invalid → block login
+
+Store in org settings:
+
+office_lat
+office_lng
+allowed_radius_meters
+gps_login_required BOOLEAN
+5. Forgot Password
+
+Flow:
+
+POST /auth/forgot
+→ generate secure token
+→ store hashed token in DB
+→ email reset link
+→ expire in 15 mins
+Roles
+admin
+hr
+emp
+
+Access matrix:
+
+Feature	Admin	HR	Emp
+Add employee	✅	❌	❌
+Approve leave	✅	✅	❌
+Add task	✅	❌	❌
+View own data	✅	✅	✅
+Reports	✅	✅	❌
+
+Use RoleGuard.
+
+🧱 2️⃣ Database Schema (Aligned to Your Model)
+USERS TABLE
+users
+-----
+id UUID PK
+organization_id UUID
+name VARCHAR
+email VARCHAR
+phone VARCHAR
+password_hash VARCHAR
+role ENUM('admin','hr','emp')
+emp_id VARCHAR NULL
+designation VARCHAR
+document_submit BOOLEAN DEFAULT false
+document_received BOOLEAN DEFAULT false
+total_leaves INT DEFAULT 12
+remaining_leaves INT DEFAULT 12
+add_on_leaves INT DEFAULT 0
+provider ENUM('local','google')
+provider_id VARCHAR NULL
+created_at TIMESTAMP
+updated_at TIMESTAMP
+
+Index:
+
+UNIQUE (organization_id, email)
+CALENDAR (Daily Attendance Record)
+
+You should NOT mix attendance and calendar. Separate them.
+
+COMPANY CALENDAR
+company_calendar
+---------------
+id UUID
+organization_id
+date DATE
+type ENUM('working','holiday','weekend')
+description TEXT
+
+Weekends auto inserted via script.
+
+ATTENDANCE
+attendance
+----------
+id UUID
+organization_id
+user_id UUID
+date DATE
+present BOOLEAN
+check_in TIMESTAMP
+check_out TIMESTAMP
+total_minutes INT
+late_by INT
+overtime_by INT
+work_type ENUM('office','wfh')
+ip_address VARCHAR
+latitude DECIMAL
+longitude DECIMAL
+created_at TIMESTAMP
+
+Composite index:
+
+(org_id, user_id, date)
+TASKS
+tasks
+-----
+id UUID
+organization_id
+title VARCHAR
+assigned_to UUID
+start_day DATE
+end_day DATE
+status ENUM('pending','in_progress','completed')
+priority ENUM('low','medium','high','critical')
+created_by UUID
+created_at TIMESTAMP
+updated_at TIMESTAMP
+
+Admin-only create enforced via guard.
+
+LEAVE REQUESTS
+leave_requests
+--------------
+id UUID
+organization_id
+user_id UUID
+category ENUM('leave','wfh','halfday')
+start_day DATE
+end_day DATE
+reason TEXT
+approved BOOLEAN DEFAULT false
+approved_by UUID NULL
+created_at TIMESTAMP
+
+When approved:
+
+Deduct remaining_leaves
+
+Insert attendance entry automatically
+
+📅 3️⃣ Calendar UI Behavior
+
+Frontend Logic:
+
+Holidays → Red
+
+Weekends → Grey
+
+Present → Green
+
+Absent → White
+
+WFH → Blue
+
+Data comes from:
+
+company_calendar
+
+attendance
+
+🕒 4️⃣ Attendance UI
+
+Features:
+
+Month Dropdown
+GET /attendance?month=2026-02
+Pagination (10 per page)
+GET /attendance?page=1&limit=10
+
+Use Prisma:
+
+skip = (page - 1) * limit
+take = limit
+📋 5️⃣ Tasks
+Add Button (Admin Only)
+
+Guard:
+
+@Roles('admin')
+Priority Ranking
+
+Order by:
+
+ORDER BY priority DESC, end_day ASC
+
+Define priority weight:
+
+critical > high > medium > low
+📨 6️⃣ Leave Request Admin Dashboard
+
+Search API:
+
+GET /leave-requests?search=vipin
+
+Backend:
+
+Search in:
+
+users.name
+
+users.email
+
+Prisma:
+
+where: {
+  user: {
+    OR: [
+      { name: { contains: search } },
+      { email: { contains: search } }
+    ]
+  }
+}
+📊 7️⃣ Admin Dashboard
+6.1 Reports
+
+Default:
+
+Current month
+
+Overall attendance
+
+Total working days
+
+Avg hours per employee
+
+Leave count
+
+API:
+
+GET /reports?month=2026-02
+
+Search filter:
+
+GET /reports?search=email
+6.2 Employees
+Add Employee
+
+Admin only:
+
+POST /users
+Edit Employee
+PATCH /users/:id
+Search Filter
+GET /users?search=vipin
+⚙️ Backend Architecture Recommendation
+Attendance Service Logic
+
+Check-in:
+
+Validate no existing check-in
+
+Validate IP
+
+Validate GPS
+
+Insert record
+
+Check-out:
+
+Fetch check-in
+
+Calculate total_minutes
+
+Calculate late_by
+
+Calculate overtime_by
+
+
+
+
+
+🔥 What You Must Do Carefully
+
+The only thing that makes or breaks your system:
+
+1️⃣ Proper Database Design
+
+You must design:
+
+organization_id everywhere
+
+proper indexes
+
+separation of attendance / calendar
+
+clean foreign keys
+
+2️⃣ Use Row Level Security (RLS)
+
+This is your backend security layer.
+
+Example:
+
+Employee can only see their own attendance:
+
+CREATE POLICY "Employees can view own attendance"
+ON attendance
+FOR SELECT
+USING (auth.uid() = user_id);
+
+Admin can see all:
+
+USING (EXISTS (
+  SELECT 1 FROM users
+  WHERE id = auth.uid()
+  AND role = 'admin'
+));
+
+If you configure RLS correctly, you don’t need heavy backend.
+
+3️⃣ API Structure in Next.js
+
+Use:
+
+Server Actions for mutations
+
+Route Handlers for protected APIs
+
+Supabase server client (never expose service key)
+
+Folder example:
+
+app/
+  dashboard/
+  admin/
+  api/
+    attendance/
+    tasks/
+    leave/
+lib/
+  supabase/
+  utils/
+🚨 Things You DON’T Need Right Now
+
+Redis
+
+Microservices
+
+Separate backend server
+
+Queue system
+
+Kubernetes
+
+Message brokers
+
+You’ll over-engineer.
+
+⚡ Performance Reality Check
+
+500 employees:
+
+Even if:
+
+200 check in at 9:00 AM
+
+200 check out at 6:00 PM
+
+200 active tasks updates
+
+Postgres can handle this easily.
+
+Supabase free tier might be tight.
+Use Pro plan.
+
+🔒 What About IP & Location Login?
+
+This part:
+
+You can:
+
+Validate IP in middleware (Next.js)
+
+Validate GPS on client + verify on server action
+
+But remember:
+IP can be spoofed.
+GPS can be mocked in browser.
+
+If security is critical:
+Mobile app is better.
+For now, browser validation is acceptable.
+
+📊 Long-Term Scalability
+
+If you grow to:
+
+5,000+ employees
+
+Multi-company SaaS
+
+Heavy analytics
+
+Then:
+Move to:
+
+Dedicated backend
+
+Queue system
+
+Background workers
+
+But not now.
+
+🧠 Strategic Advice (Very Important)
+
+You tend to design systems like enterprise trading infra.
+
+For HR platform:
+You must optimize for:
+
+Speed of launch
+
+Clean UX
+
+Stability
+
+Not over-architecture.
+
+Launch fast.
+Iterate.
+
+🎯 Final Verdict
+
+Your stack choice:
+
+⭐⭐⭐⭐⭐ 9/10 for your current size.
+
+Only condition:
+Design schema correctly from day one.
+
+If you want, next I can give you:
+
+✅ Optimized Supabase schema (production ready)
+
+✅ RLS policy setup plan
+
+✅ Folder structure for Next.js
+
+✅ Exact attendance logic implementation
+
+✅ Full system architecture diagram simplified for Supabase
+
+Tell me which one you want next.
+
+Let's design 
+Proper Database Design
+
+Good.
+We’ll design this clean, scalable, and RLS-ready for Supabase.
+
+Assumptions:
+
+Single company (for now)
+
+< 500 employees
+
+Using Supabase Auth (auth.users)
+
+PostgreSQL
+
+Role-based access
+
+No overengineering
+
+🧠 Core Design Principles
+
+Use auth.users as identity source
+
+Create profiles table mapped 1-to-1 with auth.users
+
+Separate:
+
+company calendar
+
+attendance
+
+leave requests
+
+tasks
+
+Index properly
+
+Design for future multi-tenant support (optional column ready)
+
+🏗️ FINAL DATABASE STRUCTURE
+1️⃣ Profiles (Users Extension)
+
+Supabase manages:
+
+auth.users
+
+We create:
+
+CREATE TABLE profiles (
+  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  email TEXT UNIQUE NOT NULL,
+  phone TEXT,
+  role TEXT CHECK (role IN ('admin','hr','emp')) NOT NULL DEFAULT 'emp',
+  emp_id TEXT,
+  designation TEXT,
+  document_submit BOOLEAN DEFAULT FALSE,
+  document_received BOOLEAN DEFAULT FALSE,
+  total_leaves INT DEFAULT 12,
+  remaining_leaves INT DEFAULT 12,
+  add_on_leaves INT DEFAULT 0,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+Indexes:
+
+CREATE INDEX idx_profiles_role ON profiles(role);
+CREATE INDEX idx_profiles_email ON profiles(email);
+2️⃣ Company Settings
+
+Stores office rules.
+
+CREATE TABLE company_settings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  office_lat DECIMAL,
+  office_lng DECIMAL,
+  allowed_radius_meters INT DEFAULT 100,
+  allowed_ip_range TEXT,
+  gps_login_required BOOLEAN DEFAULT FALSE,
+  ip_login_required BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+Only one row needed.
+
+3️⃣ Company Calendar (Holiday + Weekend Engine)
+CREATE TABLE company_calendar (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  date DATE UNIQUE NOT NULL,
+  type TEXT CHECK (type IN ('working','holiday','weekend')) NOT NULL,
+  description TEXT,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+Index:
+
+CREATE INDEX idx_calendar_date ON company_calendar(date);
+
+Weekends auto-inserted via script.
+
+4️⃣ Attendance
+
+This is daily record per employee.
+
+CREATE TABLE attendance (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  date DATE NOT NULL,
+  present BOOLEAN DEFAULT FALSE,
+  check_in TIMESTAMP,
+  check_out TIMESTAMP,
+  total_minutes INT DEFAULT 0,
+  late_by INT DEFAULT 0,
+  overtime_by INT DEFAULT 0,
+  work_type TEXT CHECK (work_type IN ('office','wfh')),
+  ip_address TEXT,
+  latitude DECIMAL,
+  longitude DECIMAL,
+  created_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(user_id, date)
+);
+
+Indexes:
+
+CREATE INDEX idx_attendance_user_date ON attendance(user_id, date);
+CREATE INDEX idx_attendance_date ON attendance(date);
+5️⃣ Tasks
+CREATE TABLE tasks (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  title TEXT NOT NULL,
+  assigned_to UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  start_day DATE NOT NULL,
+  end_day DATE NOT NULL,
+  status TEXT CHECK (status IN ('pending','in_progress','completed')) DEFAULT 'pending',
+  priority TEXT CHECK (priority IN ('low','medium','high','critical')) DEFAULT 'medium',
+  created_by UUID REFERENCES profiles(id),
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+Indexes:
+
+CREATE INDEX idx_tasks_assigned ON tasks(assigned_to);
+CREATE INDEX idx_tasks_status ON tasks(status);
+CREATE INDEX idx_tasks_priority ON tasks(priority);
+6️⃣ Leave Requests
+CREATE TABLE leave_requests (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  category TEXT CHECK (category IN ('leave','wfh','halfday')) NOT NULL,
+  start_day DATE NOT NULL,
+  end_day DATE NOT NULL,
+  reason TEXT,
+  approved BOOLEAN DEFAULT FALSE,
+  approved_by UUID REFERENCES profiles(id),
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+Indexes:
+
+CREATE INDEX idx_leave_user ON leave_requests(user_id);
+CREATE INDEX idx_leave_approved ON leave_requests(approved);
+7️⃣ Optional: Audit Logs (Highly Recommended)
+CREATE TABLE audit_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID,
+  action TEXT,
+  metadata JSONB,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+This protects you later.
+
+🔐 Row Level Security (CRITICAL)
+
+Enable RLS on all tables:
+
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE attendance ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE leave_requests ENABLE ROW LEVEL SECURITY;
+Profiles Policies
+
+Employee can read own profile:
+
+CREATE POLICY "read own profile"
+ON profiles
+FOR SELECT
+USING (auth.uid() = id);
+
+Admin can read all:
+
+CREATE POLICY "admin read all profiles"
+ON profiles
+FOR SELECT
+USING (
+  EXISTS (
+    SELECT 1 FROM profiles
+    WHERE id = auth.uid()
+    AND role IN ('admin','hr')
+  )
+);
+Attendance Policies
+
+Employee:
+
+CREATE POLICY "employee view own attendance"
+ON attendance
+FOR SELECT
+USING (auth.uid() = user_id);
+
+Admin/HR:
+
+CREATE POLICY "admin view all attendance"
+ON attendance
+FOR SELECT
+USING (
+  EXISTS (
+    SELECT 1 FROM profiles
+    WHERE id = auth.uid()
+    AND role IN ('admin','hr')
+  )
+);
+📊 Query Efficiency
+
+Monthly attendance:
+
+SELECT *
+FROM attendance
+WHERE user_id = $1
+AND date BETWEEN '2026-02-01' AND '2026-02-28'
+ORDER BY date;
+
+Fast because of index (user_id, date).
+
+⚡ Performance Check (500 employees)
+
+Worst case:
+
+500 × 30 days = 15,000 attendance rows per month
+
+12 months = 180,000 rows per year
+
+Postgres handles millions easily.
+
+You are completely safe.
+
+🎯 What This Design Guarantees
+
+Clean normalization
+
+No duplicate attendance
+
+Fast filtering
+
+RLS secure
+
+Expandable
+
+Supabase-friendly
+
+Easy reporting
+
+Simple dashboard queries
