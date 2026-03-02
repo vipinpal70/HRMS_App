@@ -217,6 +217,136 @@ export async function getTodayStatus() {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// NEW: Month-scoped queries for the redesigned Attendance page
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Returns the logged-in user's attendance records for a specific month/year.
+ * Sorted date descending (most recent first).
+ */
+export async function getMyAttendance(month: number, year: number) {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+
+    // Build date range: YYYY-MM-01 to YYYY-MM-last
+    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+    const endDate = new Date(year, month, 0); // last day of month
+    const endDateStr = `${year}-${String(month).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}`;
+
+    const { data, error } = await supabase
+      .from('attendance')
+      .select('*')
+      .eq('user_id', user.id)
+      .gte('date', startDate)
+      .lte('date', endDateStr)
+      .order('date', { ascending: false });
+
+    if (error) throw error;
+    return (data || []).map(record => ({
+      ...record,
+      check_in_display: record.check_in ? formatTime(record.check_in) : null,
+      check_out_display: record.check_out ? formatTime(record.check_out) : null,
+      hours_display: record.total_minutes
+        ? `${Math.floor(record.total_minutes / 60)}h ${record.total_minutes % 60}m`
+        : null,
+    }));
+  } catch (error) {
+    console.error('Error in getMyAttendance:', error);
+    return [];
+  }
+}
+
+/**
+ * Admin/HR only: Returns attendance records for all employees (or a specific one)
+ * for a given month/year. Sorted date descending.
+ */
+export async function getEmployeesAttendance(month: number, year: number, employeeId?: string) {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+
+    // Verify the caller is admin or hr
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    if (profile?.role !== 'admin' && profile?.role !== 'hr') return [];
+
+    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+    const endDate = new Date(year, month, 0);
+    const endDateStr = `${year}-${String(month).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}`;
+
+    let query = supabase
+      .from('attendance')
+      .select('*, profiles(id, name, email, emp_id, designation)')
+      .gte('date', startDate)
+      .lte('date', endDateStr)
+      .order('date', { ascending: false });
+
+    if (employeeId && employeeId !== 'all') {
+      query = query.eq('user_id', employeeId);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    return (data || []).map(record => ({
+      ...record,
+      employee_name: (record.profiles as any)?.name || 'Unknown',
+      employee_email: (record.profiles as any)?.email || '',
+      employee_emp_id: (record.profiles as any)?.emp_id || '',
+      employee_designation: (record.profiles as any)?.designation || '',
+      check_in_display: record.check_in ? formatTime(record.check_in) : null,
+      check_out_display: record.check_out ? formatTime(record.check_out) : null,
+      hours_display: record.total_minutes
+        ? `${Math.floor(record.total_minutes / 60)}h ${record.total_minutes % 60}m`
+        : null,
+    }));
+  } catch (error) {
+    console.error('Error in getEmployeesAttendance:', error);
+    return [];
+  }
+}
+
+/**
+ * Admin/HR only: Returns the list of all employees for the filter dropdown.
+ */
+export async function getEmployeeListForFilter() {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    if (profile?.role !== 'admin' && profile?.role !== 'hr') return [];
+
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, name, email, emp_id, designation')
+      .order('name', { ascending: true });
+
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('Error in getEmployeeListForFilter:', error);
+    return [];
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LEGACY: kept for backward compat (Dashboard, etc.)
+// ─────────────────────────────────────────────────────────────────────────────
 export async function getAttendanceHistory(userId?: string) {
   try {
     const supabase = await createClient();

@@ -1,193 +1,536 @@
 "use client";
 
-import { useState, useEffect } from 'react';
-import { Clock, CheckCircle2, XCircle, MapPin, Wifi, Loader2, Users, Search } from 'lucide-react';
-import { Badge } from '../components/ui/badge';
-import { getAttendanceHistory } from '../actions/attendance';
+import { useState, useEffect, useCallback, useTransition } from 'react';
+import {
+  Clock, CheckCircle2, XCircle, MapPin, Wifi, Loader2,
+  Users, ChevronLeft, ChevronRight, Download, CalendarDays,
+  TrendingUp, UserCheck, AlertCircle, Coffee, Search, X
+} from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { getMyAttendance, getEmployeesAttendance, getEmployeeListForFilter } from '../actions/attendance';
+import { toast } from 'sonner';
+
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 interface AttendanceRecord {
+  id: string;
   date: string;
-  check_in: string;
-  check_out: string;
-  total_minutes: string;
-  ipValid: boolean;
-  locationValid: boolean;
-  status: 'present' | 'absent' | 'half-day' | 'wfh' | 'leave' | 'late' | 'auto_checkout';
+  check_in: string | null;
+  check_out: string | null;
+  check_in_display: string | null;
+  check_out_display: string | null;
+  hours_display: string | null;
+  total_minutes: number | null;
+  status: string;
+  work_type: string | null;
   employee_name?: string;
   employee_email?: string;
+  employee_emp_id?: string;
+  employee_designation?: string;
 }
 
-const statusStyles: Record<string, string> = {
-  present: 'bg-success/10 text-success',
-  absent: 'bg-destructive/10 text-destructive',
-  'half-day': 'bg-warning/10 text-warning',
-  wfh: 'bg-info/10 text-info',
-  leave: 'bg-muted text-muted-foreground',
-  late: 'bg-warning/10 text-warning',
-  auto_checkout: 'bg-muted text-muted-foreground'
+interface Employee {
+  id: string;
+  name: string;
+  email: string;
+  emp_id?: string;
+  designation?: string;
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+const MONTH_NAMES = [
+  'January','February','March','April','May','June',
+  'July','August','September','October','November','December',
+];
+
+function formatDateDisplay(dateStr: string) {
+  const d = new Date(dateStr + 'T00:00:00');
+  return d.toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short' });
+}
+
+function isToday(dateStr: string) {
+  const today = new Date();
+  const d = new Date(dateStr + 'T00:00:00');
+  return d.getDate() === today.getDate() &&
+    d.getMonth() === today.getMonth() &&
+    d.getFullYear() === today.getFullYear();
+}
+
+const statusConfig: Record<string, { label: string; cls: string }> = {
+  present:       { label: 'Present',     cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' },
+  on_time:       { label: 'On Time',     cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' },
+  late:          { label: 'Late',        cls: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' },
+  absent:        { label: 'Absent',      cls: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' },
+  half_day:      { label: 'Half Day',    cls: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' },
+  'half-day':    { label: 'Half Day',    cls: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' },
+  wfh:           { label: 'WFH',         cls: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
+  leave:         { label: 'Leave',       cls: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' },
+  auto_checkout: { label: 'Auto C/O',    cls: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400' },
 };
 
-export default function AttendancePage() {
-  const { user } = useAuth();
-  const [filter, setFilter] = useState<string>('all');
-  const [viewAll, setViewAll] = useState(false); // Toggle for Admin/HR
-  const [searchQuery, setSearchQuery] = useState(''); // Search by name/email
-  const [records, setRecords] = useState<AttendanceRecord[]>([]);
-  const [loading, setLoading] = useState(true);
+function StatusBadge({ status }: { status: string }) {
+  const cfg = statusConfig[status] ?? { label: status, cls: 'bg-muted text-muted-foreground' };
+  return (
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${cfg.cls}`}>
+      {cfg.label}
+    </span>
+  );
+}
 
-  useEffect(() => {
-    async function fetchData() {
-      setLoading(true);
-      try {
-        // If viewAll is true and user is admin/hr, fetch all
-        const userId = viewAll ? 'all' : undefined;
-        const data = await getAttendanceHistory(userId);
-        setRecords(data as any);
-      } catch (error) {
-        console.error('Failed to load attendance:', error);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchData();
-  }, [viewAll]); // Re-fetch when viewAll toggles
+// ─── Excel Export (CSV) ───────────────────────────────────────────────────────
 
-  const filtered = records.filter((r) => {
-    const matchesStatus = filter === 'all' || r.status === filter;
-    const matchesSearch = !viewAll || !searchQuery || 
-      (r.employee_name?.toLowerCase().includes(searchQuery.toLowerCase()) || 
-       r.employee_email?.toLowerCase().includes(searchQuery.toLowerCase()));
-    return matchesStatus && matchesSearch;
-  });
-  const canViewAll = user?.role === 'admin' || user?.role === 'hr';
+function exportToCSV(records: AttendanceRecord[], fileName: string) {
+  const isAdmin = 'employee_name' in (records[0] ?? {});
+  const headers = isAdmin
+    ? ['Employee', 'Employee ID', 'Designation', 'Date', 'Check In', 'Check Out', 'Hours', 'Work Type', 'Status']
+    : ['Date', 'Check In', 'Check Out', 'Hours', 'Work Type', 'Status'];
 
-  if (loading) {
-      return (
-          <div className="flex items-center justify-center h-64">
-              <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+  const rows = records.map(r =>
+    isAdmin
+      ? [
+          r.employee_name ?? '',
+          r.employee_emp_id ?? '',
+          r.employee_designation ?? '',
+          r.date,
+          r.check_in_display ?? '',
+          r.check_out_display ?? '',
+          r.hours_display ?? '',
+          r.work_type ?? '',
+          r.status,
+        ]
+      : [r.date, r.check_in_display ?? '', r.check_out_display ?? '', r.hours_display ?? '', r.work_type ?? '', r.status]
+  );
+
+  const csv = [headers, ...rows].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${fileName}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ─── Month Picker ─────────────────────────────────────────────────────────────
+
+function MonthPicker({
+  month, year, onChange,
+}: {
+  month: number; year: number; onChange: (m: number, y: number) => void;
+}) {
+  const prev = () => {
+    if (month === 1) onChange(12, year - 1);
+    else onChange(month - 1, year);
+  };
+  const next = () => {
+    const now = new Date();
+    if (year > now.getFullYear() || (year === now.getFullYear() && month >= now.getMonth() + 1)) return;
+    if (month === 12) onChange(1, year + 1);
+    else onChange(month + 1, year);
+  };
+  const isCurrentMonth = month === new Date().getMonth() + 1 && year === new Date().getFullYear();
+
+  return (
+    <div className="flex items-center gap-1 bg-secondary/60 rounded-lg px-1 py-1">
+      <button onClick={prev} className="p-1.5 rounded-md hover:bg-background transition-colors">
+        <ChevronLeft className="w-4 h-4" />
+      </button>
+      <span className="px-2 text-sm font-semibold min-w-[120px] text-center">
+        {MONTH_NAMES[month - 1]} {year}
+      </span>
+      <button
+        onClick={next}
+        disabled={isCurrentMonth}
+        className="p-1.5 rounded-md hover:bg-background transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+      >
+        <ChevronRight className="w-4 h-4" />
+      </button>
+    </div>
+  );
+}
+
+// ─── Stats Cards ──────────────────────────────────────────────────────────────
+
+function StatsRow({ records }: { records: AttendanceRecord[] }) {
+  const present = records.filter(r => ['present', 'on_time'].includes(r.status)).length;
+  const late = records.filter(r => r.status === 'late').length;
+  const absent = records.filter(r => r.status === 'absent').length;
+  const wfh = records.filter(r => r.status === 'wfh').length;
+  const totalMin = records.reduce((acc, r) => acc + (r.total_minutes ?? 0), 0);
+  const totalHrs = Math.floor(totalMin / 60);
+  const totalMins = totalMin % 60;
+
+  const stats = [
+    { label: 'Present', value: present, icon: UserCheck, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
+    { label: 'Late',    value: late,    icon: Clock,     color: 'text-amber-600',   bg: 'bg-amber-50 dark:bg-amber-900/20' },
+    { label: 'Absent',  value: absent,  icon: AlertCircle, color: 'text-red-600',   bg: 'bg-red-50 dark:bg-red-900/20' },
+    { label: 'WFH',     value: wfh,     icon: Coffee,    color: 'text-blue-600',    bg: 'bg-blue-50 dark:bg-blue-900/20' },
+    { label: 'Total Hours', value: `${totalHrs}h ${totalMins}m`, icon: TrendingUp, color: 'text-violet-600', bg: 'bg-violet-50 dark:bg-violet-900/20' },
+  ];
+
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+      {stats.map(s => (
+        <div key={s.label} className={`stat-card flex items-center gap-3 ${s.bg}`}>
+          <div className={`p-2 rounded-lg bg-background/60 ${s.color}`}>
+            <s.icon className="w-4 h-4" />
           </div>
-      )
+          <div>
+            <p className={`text-lg font-bold ${s.color}`}>{s.value}</p>
+            <p className="text-xs text-muted-foreground">{s.label}</p>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Attendance Table ─────────────────────────────────────────────────────────
+
+function AttendanceTable({
+  records, showEmployee, loading,
+}: {
+  records: AttendanceRecord[]; showEmployee: boolean; loading: boolean;
+}) {
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-40">
+        <Loader2 className="w-7 h-7 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+  if (records.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-3">
+        <CalendarDays className="w-10 h-10 opacity-30" />
+        <p className="text-sm">No attendance records found</p>
+      </div>
+    );
   }
 
   return (
-    <div className="space-y-6 animate-fade-up">
-      <div>
-        <h1 className="text-2xl font-bold">Attendance History</h1>
-        <p className="text-muted-foreground text-sm mt-1">Track your daily check-ins and validations</p>
-      </div>
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-border text-muted-foreground text-xs uppercase tracking-wide">
+            {showEmployee && <th className="text-left py-3 px-3 font-medium">Employee</th>}
+            <th className="text-left py-3 px-3 font-medium">Date</th>
+            <th className="text-left py-3 px-3 font-medium">Check In</th>
+            <th className="text-left py-3 px-3 font-medium">Check Out</th>
+            <th className="text-left py-3 px-3 font-medium">Hours</th>
+            <th className="text-left py-3 px-3 font-medium">Type</th>
+            <th className="text-left py-3 px-3 font-medium">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {records.map((record, i) => (
+            <tr
+              key={record.id ?? i}
+              className={`border-b border-border/40 last:border-0 transition-colors hover:bg-muted/30 ${
+                isToday(record.date) ? 'bg-primary/5' : ''
+              }`}
+            >
+              {showEmployee && (
+                <td className="py-3 px-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold flex-shrink-0">
+                      {record.employee_name?.charAt(0)?.toUpperCase()}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-medium truncate max-w-[140px]">{record.employee_name}</p>
+                      {record.employee_emp_id && (
+                        <p className="text-xs text-muted-foreground">{record.employee_emp_id}</p>
+                      )}
+                    </div>
+                  </div>
+                </td>
+              )}
+              <td className="py-3 px-3">
+                <div className="flex items-center gap-1.5">
+                  {isToday(record.date) && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />
+                  )}
+                  <span className={isToday(record.date) ? 'font-semibold text-primary' : 'font-medium'}>
+                    {formatDateDisplay(record.date)}
+                  </span>
+                </div>
+              </td>
+              <td className="py-3 px-3 font-mono text-xs">
+                {record.check_in_display
+                  ? <span className="text-emerald-600 dark:text-emerald-400">{record.check_in_display}</span>
+                  : <span className="text-muted-foreground">—</span>}
+              </td>
+              <td className="py-3 px-3 font-mono text-xs">
+                {record.check_out_display
+                  ? <span className="text-sky-600 dark:text-sky-400">{record.check_out_display}</span>
+                  : <span className="text-muted-foreground">—</span>}
+              </td>
+              <td className="py-3 px-3 text-xs font-medium">
+                {record.hours_display ?? <span className="text-muted-foreground">—</span>}
+              </td>
+              <td className="py-3 px-3">
+                {record.work_type ? (
+                  <span className="text-xs capitalize px-2 py-0.5 rounded bg-secondary text-secondary-foreground">
+                    {record.work_type === 'wfh' ? 'WFH' : record.work_type}
+                  </span>
+                ) : <span className="text-muted-foreground text-xs">—</span>}
+              </td>
+              <td className="py-3 px-3">
+                <StatusBadge status={record.status} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
-      {/* Filters & View Toggle */}
-      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-        <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center w-full lg:w-auto">
-          {viewAll && (
-            <div className="relative w-full sm:w-64">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <input
-                type="text"
-                placeholder="Search employee..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-4 py-1.5 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-            </div>
-          )}
-          <div className="flex flex-wrap gap-2">
-            {['all', 'present', 'absent', 'half-day', 'wfh', 'leave'].map((f) => (
-              <button
-                key={f}
-                onClick={() => setFilter(f)}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium capitalize transition-colors ${
-                  filter === f
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
-                }`}
-              >
-                {f === 'all' ? 'All' : f}
-              </button>
-            ))}
-          </div>
-        </div>
+// ─── My Attendance (Employee View) ────────────────────────────────────────────
 
-        {canViewAll && (
+function MyAttendanceView() {
+  const now = new Date();
+  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [year, setYear] = useState(now.getFullYear());
+  const [records, setRecords] = useState<AttendanceRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isPending, startTransition] = useTransition();
+
+  const fetch = useCallback(() => {
+    setLoading(true);
+    startTransition(async () => {
+      try {
+        const data = await getMyAttendance(month, year);
+        setRecords(data as AttendanceRecord[]);
+      } catch {
+        toast.error('Failed to load attendance');
+      } finally {
+        setLoading(false);
+      }
+    });
+  }, [month, year]);
+
+  useEffect(() => { fetch(); }, [fetch]);
+
+  return (
+    <div className="space-y-5">
+      {/* Header row */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+        <MonthPicker month={month} year={year} onChange={(m, y) => { setMonth(m); setYear(y); }} />
+        {records.length > 0 && (
           <button
-            onClick={() => setViewAll(!viewAll)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
-              viewAll
-                ? 'bg-sidebar-primary text-sidebar-primary-foreground'
-                : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
-            }`}
+            onClick={() => exportToCSV(records, `my-attendance-${MONTH_NAMES[month - 1]}-${year}`)}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors text-sm font-medium"
           >
-            <Users className="w-4 h-4" />
-            {viewAll ? 'View My Attendance' : 'Viewing All Employees'}
+            <Download className="w-4 h-4" /> Export CSV
           </button>
         )}
       </div>
 
+      {/* Stats */}
+      {!loading && records.length > 0 && <StatsRow records={records} />}
+
       {/* Table */}
-      <div className="stat-card overflow-x-auto">
-        {records.length === 0 ? (
-            <div className="text-center py-10 text-muted-foreground">
-                <p>No attendance records found.</p>
-            </div>
-        ) : (
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border text-muted-foreground">
-              {viewAll && <th className="text-left py-3 px-2 font-medium">Employee</th>}
-              <th className="text-left py-3 px-2 font-medium">Date</th>
-              <th className="text-left py-3 px-2 font-medium">Check In</th>
-              <th className="text-left py-3 px-2 font-medium">Check Out</th>
-              <th className="text-left py-3 px-2 font-medium">Hours</th>
-              <th className="text-center py-3 px-2 font-medium">
-                <Wifi className="w-4 h-4 inline" />
-              </th>
-              <th className="text-center py-3 px-2 font-medium">
-                <MapPin className="w-4 h-4 inline" />
-              </th>
-              <th className="text-left py-3 px-2 font-medium">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((record, i) => (
-              <tr key={i} className="border-b border-border/50 last:border-0 hover:bg-muted/30 transition-colors">
-                {viewAll && (
-                  <td className="py-3 px-2 font-medium flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold">
-                        {record.employee_name?.charAt(0)}
-                    </div>
-                    {record.employee_name}
-                  </td>
-                )}
-                <td className="py-3 px-2 font-medium">{record.date}</td>
-                <td className="py-3 px-2 font-mono text-xs">{record.check_in}</td>
-                <td className="py-3 px-2 font-mono text-xs">{record.check_out}</td>
-                <td className="py-3 px-2 font-mono text-xs">{record.total_minutes}</td>
-                <td className="py-3 px-2 text-center">
-                  {record.ipValid ? (
-                    <CheckCircle2 className="w-4 h-4 text-success inline" />
-                  ) : (
-                    <XCircle className="w-4 h-4 text-muted-foreground/40 inline" />
-                  )}
-                </td>
-                <td className="py-3 px-2 text-center">
-                  {record.locationValid ? (
-                    <CheckCircle2 className="w-4 h-4 text-success inline" />
-                  ) : (
-                    <XCircle className="w-4 h-4 text-muted-foreground/40 inline" />
-                  )}
-                </td>
-                <td className="py-3 px-2">
-                  <span className={`badge-status capitalize ${statusStyles[record.status] || 'bg-secondary'}`}>
-                    {record.status}
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="stat-card !p-0 overflow-hidden">
+        <AttendanceTable records={records} showEmployee={false} loading={loading} />
+      </div>
+    </div>
+  );
+}
+
+// ─── All Employees Attendance (Admin/HR View) ─────────────────────────────────
+
+function AllEmployeesView() {
+  const now = new Date();
+  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [year, setYear] = useState(now.getFullYear());
+  const [selectedEmployee, setSelectedEmployee] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [records, setRecords] = useState<AttendanceRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [empLoading, setEmpLoading] = useState(true);
+  const [isPending, startTransition] = useTransition();
+
+  // Load employee list once
+  useEffect(() => {
+    startTransition(async () => {
+      try {
+        const data = await getEmployeeListForFilter();
+        setEmployees(data as Employee[]);
+      } catch {
+        toast.error('Failed to load employees');
+      } finally {
+        setEmpLoading(false);
+      }
+    });
+  }, []);
+
+  const fetch = useCallback(() => {
+    setLoading(true);
+    startTransition(async () => {
+      try {
+        const data = await getEmployeesAttendance(month, year, selectedEmployee);
+        setRecords(data as AttendanceRecord[]);
+      } catch {
+        toast.error('Failed to load attendance');
+      } finally {
+        setLoading(false);
+      }
+    });
+  }, [month, year, selectedEmployee]);
+
+  useEffect(() => { fetch(); }, [fetch]);
+
+  const selectedEmpName = employees.find(e => e.id === selectedEmployee)?.name;
+  const exportFileName = selectedEmployee === 'all'
+    ? `team-attendance-${MONTH_NAMES[month - 1]}-${year}`
+    : `${selectedEmpName?.replace(/\s+/g, '-')}-attendance-${MONTH_NAMES[month - 1]}-${year}`;
+
+  // Client-side search filter (name, email, emp_id)
+  const q = searchQuery.trim().toLowerCase();
+  const filteredRecords = q
+    ? records.filter(r =>
+        r.employee_name?.toLowerCase().includes(q) ||
+        r.employee_email?.toLowerCase().includes(q) ||
+        r.employee_emp_id?.toLowerCase().includes(q)
+      )
+    : records;
+
+  return (
+    <div className="space-y-5">
+      {/* Filter bar – row 1: dropdown + month + export */}
+      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+        <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+          {/* Employee filter */}
+          <div className="relative">
+            <Users className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+            <select
+              value={selectedEmployee}
+              onChange={e => { setSelectedEmployee(e.target.value); setSearchQuery(''); }}
+              disabled={empLoading}
+              className="pl-9 pr-8 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring appearance-none min-w-[200px] disabled:opacity-60"
+            >
+              <option value="all">All Employees</option>
+              {employees.map(emp => (
+                <option key={emp.id} value={emp.id}>
+                  {emp.name}{emp.emp_id ? ` (${emp.emp_id})` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Month picker */}
+          <MonthPicker month={month} year={year} onChange={(m, y) => { setMonth(m); setYear(y); }} />
+        </div>
+
+        {/* Export – exports only what's currently shown (filtered) */}
+        {filteredRecords.length > 0 && (
+          <button
+            onClick={() => exportToCSV(filteredRecords, exportFileName)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition-colors text-sm font-medium shadow-sm"
+          >
+            <Download className="w-4 h-4" /> Export to Excel
+          </button>
         )}
       </div>
+
+      {/* Search bar – only shown when viewing All Employees */}
+      {selectedEmployee === 'all' && (
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder="Search by employee name, email or ID…"
+            className="w-full pl-9 pr-9 py-2.5 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring transition"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+              aria-label="Clear search"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Match count badge when searching */}
+      {q && (
+        <p className="text-xs text-muted-foreground">
+          Showing <span className="font-medium text-foreground">{filteredRecords.length}</span> of {records.length} records
+          {` matching "`}<span className="font-medium text-foreground">{searchQuery}</span>{`"`}
+        </p>
+      )}
+
+      {/* Stats – reflect the current search/filter */}
+      {!loading && filteredRecords.length > 0 && <StatsRow records={filteredRecords} />}
+
+      {/* Table */}
+      <div className="stat-card !p-0 overflow-hidden">
+        <AttendanceTable records={filteredRecords} showEmployee={selectedEmployee === 'all'} loading={loading} />
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
+
+export default function AttendancePage() {
+  const { user } = useAuth();
+  const isAdminOrHR = user?.role === 'admin' || user?.role === 'hr';
+
+  // Tab state: 'mine' or 'all'
+  const [tab, setTab] = useState<'mine' | 'all'>('mine');
+
+  return (
+    <div className="space-y-6 animate-fade-up">
+      {/* Page header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h1 className="text-2xl font-bold">Attendance</h1>
+          <p className="text-muted-foreground text-sm mt-1">
+            {isAdminOrHR
+              ? 'Manage and review team attendance records'
+              : 'View your monthly attendance history'}
+          </p>
+        </div>
+      </div>
+
+      {/* Tabs (Admin/HR only) */}
+      {isAdminOrHR && (
+        <div className="flex gap-1 p-1 bg-secondary/60 rounded-xl w-fit">
+          <button
+            onClick={() => setTab('mine')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              tab === 'mine'
+                ? 'bg-background shadow text-foreground'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            My Attendance
+          </button>
+          <button
+            onClick={() => setTab('all')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
+              tab === 'all'
+                ? 'bg-background shadow text-foreground'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <Users className="w-4 h-4" />
+            All Employees
+          </button>
+        </div>
+      )}
+
+      {/* Content */}
+      {(tab === 'mine' || !isAdminOrHR) && <MyAttendanceView />}
+      {isAdminOrHR && tab === 'all' && <AllEmployeesView />}
     </div>
   );
 }
