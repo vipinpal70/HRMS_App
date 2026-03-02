@@ -7,17 +7,17 @@ import { getDistance } from '@/lib/location';
 
 // Initialize Admin Client (Requires SUPABASE_SERVICE_ROLE_KEY)
 // We create this purely for admin operations
-const supabaseAdmin = process.env.SUPABASE_SERVICE_ROLE_KEY 
+const supabaseAdmin = process.env.SUPABASE_SERVICE_ROLE_KEY
   ? createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false
-        }
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY,
+    {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
       }
-    )
+    }
+  )
   : null;
 
 export async function loginWithIp(email: string) {
@@ -25,22 +25,22 @@ export async function loginWithIp(email: string) {
     if (!supabaseAdmin) {
       return { error: 'Server misconfiguration: Service Role Key missing.' };
     }
-    
+
     console.log('Attempting IP Login for:', email);
 
     // 1. Get Company Settings
     let settings = await getCompanySettings();
-    
+
     // Fallback for development if DB fetch fails
     if (!settings) {
-       console.warn('Using fallback settings (DB fetch failed)');
-       settings = { 
-         allowed_ip_range: '127.0.0.1,::1', 
-         office_lat: 28.6139, 
-         office_lng: 77.2090, 
-         allowed_radius_meters: 100,
-         organization_name: 'Dev Corp'
-       };
+      console.warn('Using fallback settings (DB fetch failed)');
+      settings = {
+        allowed_ip_range: '127.0.0.1,::1',
+        office_lat: 28.41607,
+        office_lng: 77.09253,
+        allowed_radius_meters: 500,
+        organization_name: 'Dev Corp'
+      };
     }
 
     if (!settings?.allowed_ip_range) {
@@ -58,12 +58,12 @@ export async function loginWithIp(email: string) {
     // In real prod, we need a CIDR library. 
     // Simplified: Check if settings.allowed_ip_range contains the IP (very basic)
     // or if dev environment.
-    
+
     // CIDR Check Mock:
     const isIpValid = realIp === '127.0.0.1' || realIp === '::1' || settings.allowed_ip_range.includes(realIp);
 
     if (!isIpValid) {
-        return { error: 'Access Denied: You are not at the office (IP Mismatch).' };
+      return { error: 'Access Denied: You are not at the office (IP Mismatch).' };
     }
 
     // 4. Generate Magic Link (Instant Login)
@@ -100,10 +100,10 @@ export async function loginWithGps(email: string, lat: number, lng: number) {
     // 2. Validate Distance
     // getDistance returns meters
     const distance = getDistance(lat, lng, settings.office_lat, settings.office_lng);
-    const maxRadius = settings.allowed_radius_meters || 100;
+    const maxRadius = settings.allowed_radius_meters || 300;
 
     if (distance > maxRadius) {
-       return { error: `Access Denied: You are ${Math.round(distance)}m away from office. Allowed: ${maxRadius}m.` };
+      return { error: `Access Denied: You are ${Math.round(distance)}m away from office. Allowed: ${maxRadius}m. ${lat}, ${lng}` };
     }
 
     // 3. Generate Magic Link
@@ -127,5 +127,5 @@ export async function loginWithGps(email: string, lat: number, lng: number) {
 
 // Helper to update user location (called after successful login)
 export async function updateUserLocation(email: string, lat?: number, lng?: number, ip?: string) {
-    return { success: true };
+  return { success: true };
 }

@@ -89,7 +89,7 @@ export default function NotificationBell() {
         onClick={() => setIsOpen(!isOpen)}
         className="relative p-2 text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground rounded-md transition-colors"
       >
-        <Bell className="w-5 h-5" />
+        <Bell className="w-5 h-5 text-black" />
         {unreadCount > 0 && (
           <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-sidebar" />
         )}
@@ -100,14 +100,14 @@ export default function NotificationBell() {
           <div className="p-3 border-b border-border font-semibold text-sm flex justify-between items-center">
             <span>Notifications</span>
             {unreadCount > 0 && (
-              <button 
+              <button
                 onClick={async () => {
-                   const { data: { user } } = await supabase.auth.getUser();
-                   if (user) {
-                     await supabase.from('notifications').update({ is_read: true }).eq('user_id', user.id);
-                     setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
-                     setUnreadCount(0);
-                   }
+                  const { data: { user } } = await supabase.auth.getUser();
+                  if (user) {
+                    await supabase.from('notifications').update({ is_read: true }).eq('user_id', user.id);
+                    setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+                    setUnreadCount(0);
+                  }
                 }}
                 className="text-xs text-primary hover:underline"
               >
@@ -125,9 +125,8 @@ export default function NotificationBell() {
                 <div
                   key={n.id}
                   onClick={() => handleNotificationClick(n)}
-                  className={`p-3 border-b border-border/50 last:border-0 hover:bg-muted/50 cursor-pointer transition-colors ${
-                    !n.is_read ? 'bg-muted/20' : ''
-                  }`}
+                  className={`p-3 border-b border-border/50 last:border-0 hover:bg-muted/50 cursor-pointer transition-colors ${!n.is_read ? 'bg-muted/20' : ''
+                    }`}
                 >
                   <div className="flex justify-between items-start gap-2">
                     <h4 className={`text-sm font-medium ${!n.is_read ? 'text-foreground' : 'text-muted-foreground'}`}>

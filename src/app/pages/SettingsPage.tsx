@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { getCompanySettings, updateCompanySettings } from '../actions/settings';
-import { toast } from 'sonner';
+import { toast } from 'react-hot-toast';
 import { Loader2, Shield, MapPin, Wifi, Building2, Clock } from 'lucide-react';
 
 export default function SettingsPage() {
@@ -11,6 +11,11 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [settings, setSettings] = useState<any>(null);
   const [saving, setSaving] = useState(false);
+  const [toastr, setToastr] = useState({
+    message: '',
+    type: 'success',
+    show: false
+  });
 
   useEffect(() => {
     async function fetchSettings() {
@@ -35,13 +40,13 @@ export default function SettingsPage() {
 
     setSaving(true);
     const formData = new FormData(e.currentTarget);
-    
+
     const result = await updateCompanySettings(formData);
-    
+
     if (result.success) {
-      toast.success(result.message);
       const updated = Object.fromEntries(formData.entries());
       setSettings((prev: any) => ({ ...prev, ...updated }));
+      toast.success("Settings saved successfully!");
     } else {
       toast.error(result.error || 'Failed to update settings.');
     }
@@ -49,11 +54,11 @@ export default function SettingsPage() {
   };
 
   if (loading) {
-      return (
-          <div className="flex items-center justify-center h-64">
-              <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-          </div>
-      )
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+      </div>
+    )
   }
 
   const isAdmin = user?.role === 'admin';
@@ -90,12 +95,12 @@ export default function SettingsPage() {
               </span>
             )}
           </p>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1">Office Start Time</label>
-              <input 
-                type="time" 
+              <input
+                type="time"
                 name="office_start_time"
                 defaultValue={settings?.office_start_time?.substring(0, 5) || '09:00'}
                 disabled={!isAdmin}
@@ -104,8 +109,8 @@ export default function SettingsPage() {
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Office End Time</label>
-              <input 
-                type="time" 
+              <input
+                type="time"
                 name="office_end_time"
                 defaultValue={settings?.office_end_time?.substring(0, 5) || '19:00'}
                 disabled={!isAdmin}
@@ -117,7 +122,7 @@ export default function SettingsPage() {
             <p className="text-xs text-muted-foreground italic">Only administrators can change office hours.</p>
           )}
         </div>
-        
+
         {/* IP Validation */}
         <div className="stat-card space-y-4">
           <div className="flex items-center gap-2 mb-2">
@@ -125,102 +130,102 @@ export default function SettingsPage() {
             <h2 className="text-lg font-semibold">IP Address Validation</h2>
           </div>
           <p className="text-sm text-muted-foreground">Set the allowed office IP range for attendance check-in validation.</p>
-          
+
           <div>
-             <label className="block text-sm font-medium mb-1">Office IP Range (CIDR)</label>
-             <input 
-               type="text" 
-               name="allowed_ip_range"
-               defaultValue={settings?.allowed_ip_range || ''}
-               disabled={!isAdmin}
-               className="w-full p-2 border rounded-md bg-background disabled:opacity-50"
-               placeholder="e.g. 192.168.1.0/24"
-             />
-           </div>
-         </div>
- 
-         {/* Geo-fencing */}
-         <div className="stat-card space-y-4">
-           <div className="flex items-center gap-2 mb-2">
-             <MapPin className="w-5 h-5 text-success" />
-             <h2 className="text-lg font-semibold">Geo-fencing Configuration</h2>
-           </div>
-           <p className="text-sm text-muted-foreground">Set the office location and allowed radius for geo-fence validation.</p>
-           
-           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-             <div>
-               <label className="block text-sm font-medium mb-1">Latitude</label>
-               <input 
-                 type="number" 
-                 step="any"
-                 name="office_lat"
-                 defaultValue={settings?.office_lat || ''}
-                 disabled={!isAdmin}
-                 className="w-full p-2 border rounded-md bg-background disabled:opacity-50"
-               />
-             </div>
-             <div>
-               <label className="block text-sm font-medium mb-1">Longitude</label>
-               <input 
-                 type="number" 
-                 step="any"
-                 name="office_lng"
-                 defaultValue={settings?.office_lng || ''}
-                 disabled={!isAdmin}
-                 className="w-full p-2 border rounded-md bg-background disabled:opacity-50"
-               />
-             </div>
-             <div>
-               <label className="block text-sm font-medium mb-1">Radius (m)</label>
-               <input 
-                 type="number" 
-                 name="allowed_radius_meters"
-                 defaultValue={settings?.allowed_radius_meters || 100}
-                 disabled={!isAdmin}
-                 className="w-full p-2 border rounded-md bg-background disabled:opacity-50"
-               />
-             </div>
-           </div>
-         </div>
- 
-         {/* Company Settings */}
-         <div className="stat-card space-y-4">
-           <div className="flex items-center gap-2 mb-2">
-             <Building2 className="w-5 h-5 text-warning" />
-             <h2 className="text-lg font-semibold">Company Settings</h2>
-           </div>
-           
-           <div>
-             <label className="block text-sm font-medium mb-1">Company Name</label>
-             <input 
-               type="text" 
-               name="organization_name"
-               defaultValue={settings?.organization_name || ''}
-               disabled={!isAdmin}
-               className="w-full p-2 border rounded-md bg-background disabled:opacity-50"
-             />
-           </div>
-         </div>
+            <label className="block text-sm font-medium mb-1">Office IP Range (CIDR)</label>
+            <input
+              type="text"
+              name="allowed_ip_range"
+              defaultValue={settings?.allowed_ip_range || ''}
+              disabled={!isAdmin}
+              className="w-full p-2 border rounded-md bg-background disabled:opacity-50"
+              placeholder="e.g. 192.168.1.0/24"
+            />
+          </div>
+        </div>
+
+        {/* Geo-fencing */}
+        <div className="stat-card space-y-4">
+          <div className="flex items-center gap-2 mb-2">
+            <MapPin className="w-5 h-5 text-success" />
+            <h2 className="text-lg font-semibold">Geo-fencing Configuration</h2>
+          </div>
+          <p className="text-sm text-muted-foreground">Set the office location and allowed radius for geo-fence validation.</p>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Latitude</label>
+              <input
+                type="number"
+                step="any"
+                name="office_lat"
+                defaultValue={settings?.office_lat || ''}
+                disabled={!isAdmin}
+                className="w-full p-2 border rounded-md bg-background disabled:opacity-50"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Longitude</label>
+              <input
+                type="number"
+                step="any"
+                name="office_lng"
+                defaultValue={settings?.office_lng || ''}
+                disabled={!isAdmin}
+                className="w-full p-2 border rounded-md bg-background disabled:opacity-50"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Radius (m)</label>
+              <input
+                type="number"
+                name="allowed_radius_meters"
+                defaultValue={settings?.allowed_radius_meters || 100}
+                disabled={!isAdmin}
+                className="w-full p-2 border rounded-md bg-background disabled:opacity-50"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Company Settings */}
+        <div className="stat-card space-y-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Building2 className="w-5 h-5 text-warning" />
+            <h2 className="text-lg font-semibold">Company Settings</h2>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">Company Name</label>
+            <input
+              type="text"
+              name="organization_name"
+              defaultValue={settings?.organization_name || ''}
+              disabled={!isAdmin}
+              className="w-full p-2 border rounded-md bg-background disabled:opacity-50"
+            />
+          </div>
+        </div>
 
         {/* Save Button */}
         {isAdmin && (
           <div className="flex justify-end">
-             <button 
-               type="submit" 
-               disabled={saving}
-               className="bg-primary text-primary-foreground px-6 py-2 rounded-lg font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center gap-2"
-             >
-               {saving && <Loader2 className="w-4 h-4 animate-spin" />}
-               {saving ? 'Saving...' : 'Save Settings'}
-             </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="bg-primary text-primary-foreground px-6 py-2 rounded-lg font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center gap-2"
+            >
+              {saving && <Loader2 className="w-4 h-4 animate-spin" />}
+              {saving ? 'Saving...' : 'Save Settings'}
+            </button>
           </div>
         )}
-        
+
         {!isAdmin && (
-           <div className="bg-destructive/10 text-destructive p-4 rounded-lg flex items-center gap-2 text-sm">
-              <Shield className="w-4 h-4" />
-              Only administrators can update these settings.
-           </div>
+          <div className="bg-destructive/10 text-destructive p-4 rounded-lg flex items-center gap-2 text-sm">
+            <Shield className="w-4 h-4" />
+            Only administrators can update these settings.
+          </div>
         )}
 
       </form>

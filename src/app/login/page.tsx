@@ -73,6 +73,7 @@ export default function LoginPage() {
       async (position) => {
         const { latitude, longitude } = position.coords
         const result = await loginWithGps(email, latitude, longitude)
+        console.log("result: ", result)
 
         if (result.error) {
           setError(result.error)

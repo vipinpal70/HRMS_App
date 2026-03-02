@@ -22,7 +22,7 @@ import { Progress } from '../components/ui/progress';
 import { Calendar } from '../components/ui/calendar';
 import { checkIn, checkOut, getTodayStatus } from '../actions/attendance';
 import { getCompanySettings } from '../actions/settings';
-import { toast } from 'sonner';
+import { toast } from 'react-hot-toast';
 
 const holidays = [
   { date: new Date(2026, 1, 14), label: "Valentine's Day", type: 'holiday' as const },
@@ -42,8 +42,8 @@ export default function Dashboard() {
   const [checkedIn, setCheckedIn] = useState(false);
   const [checkInTime, setCheckInTime] = useState<Date | null>(null);
   const [elapsed, setElapsed] = useState(0);
-  const [ipValid, setIpValid] = useState(true); 
-  const [locationValid, setLocationValid] = useState(true); 
+  const [ipValid, setIpValid] = useState(true);
+  const [locationValid, setLocationValid] = useState(true);
   const [calendarDate, setCalendarDate] = useState<Date | undefined>(new Date());
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
@@ -60,11 +60,11 @@ export default function Dashboard() {
         ]);
 
         if (data) {
-           const isCheckedIn = !!data.check_in && !data.check_out;
-           setCheckedIn(isCheckedIn);
-           if (data.check_in) {
-             setCheckInTime(new Date(data.check_in));
-           }
+          const isCheckedIn = !!data.check_in && !data.check_out;
+          setCheckedIn(isCheckedIn);
+          if (data.check_in) {
+            setCheckInTime(new Date(data.check_in));
+          }
         }
 
         if (settings) {
@@ -102,19 +102,19 @@ export default function Dashboard() {
     if (checkedIn && checkInTime) {
       // Update elapsed time immediately
       setElapsed(Math.floor((Date.now() - checkInTime.getTime()) / 1000));
-      
+
       interval = setInterval(() => {
         setElapsed(Math.floor((Date.now() - checkInTime.getTime()) / 1000));
       }, 1000);
     } else {
-        setElapsed(0);
+      setElapsed(0);
     }
     return () => clearInterval(interval);
   }, [checkedIn, checkInTime]);
 
   const handleCheckIn = async () => {
     setLoading(true);
-    
+
     // Get Location
     if (!navigator.geolocation) {
       toast.error('Geolocation is not supported by your browser');
@@ -125,10 +125,10 @@ export default function Dashboard() {
     navigator.geolocation.getCurrentPosition(
       async (position) => {
         const { latitude, longitude } = position.coords;
-        
+
         try {
           const result = await checkIn(latitude, longitude);
-          
+
           if (result.error) {
             toast.error(result.error);
           } else {
@@ -151,43 +151,43 @@ export default function Dashboard() {
   };
 
   const handleCheckOut = async () => {
-     setLoading(true);
-     
-      // Get Location (optional for checkout but good for audit)
-      if (!navigator.geolocation) {
-         // Fallback if no geolocation
-         await performCheckOut(0, 0);
-         return;
-      }
+    setLoading(true);
 
-      navigator.geolocation.getCurrentPosition(
-        async (position) => {
-            const { latitude, longitude } = position.coords;
-            await performCheckOut(latitude, longitude);
-        },
-        async (error) => {
-             // Allow checkout even if location fails
-             await performCheckOut(0, 0);
-        }
-      );
+    // Get Location (optional for checkout but good for audit)
+    if (!navigator.geolocation) {
+      // Fallback if no geolocation
+      await performCheckOut(0, 0);
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const { latitude, longitude } = position.coords;
+        await performCheckOut(latitude, longitude);
+      },
+      async (error) => {
+        // Allow checkout even if location fails
+        await performCheckOut(0, 0);
+      }
+    );
   };
 
   const performCheckOut = async (lat: number, lng: number) => {
-      try {
-        const result = await checkOut(lat, lng);
-        
-        if (result.error) {
-          toast.error(result.error);
-        } else {
-          toast.success('Checked out successfully!');
-          setCheckedIn(false);
-          setCheckInTime(null);
-        }
-      } catch (error) {
-        toast.error('Failed to check out');
-      } finally {
-        setLoading(false);
+    try {
+      const result = await checkOut(lat, lng);
+
+      if (result.error) {
+        toast.error(result.error);
+      } else {
+        toast.success('Checked out successfully!');
+        setCheckedIn(false);
+        setCheckInTime(null);
       }
+    } catch (error) {
+      toast.error('Failed to check out');
+    } finally {
+      setLoading(false);
+    }
   }
 
   const formatTime = (seconds: number) => {
@@ -246,11 +246,11 @@ export default function Dashboard() {
   }, [user]);
 
   if (initialLoading) {
-      return (
-          <div className="flex items-center justify-center h-64">
-              <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-          </div>
-      )
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+      </div>
+    )
   }
 
   return (
@@ -268,9 +268,8 @@ export default function Dashboard() {
         <div className="flex-1 space-y-3">
           <div className="flex items-center gap-3">
             <div
-              className={`w-3 h-3 rounded-full ${
-                checkedIn ? 'bg-success pulse-dot' : 'bg-muted-foreground/30'
-              }`}
+              className={`w-3 h-3 rounded-full ${checkedIn ? 'bg-success pulse-dot' : 'bg-muted-foreground/30'
+                }`}
             />
             <span className="font-semibold text-lg">
               {checkedIn ? 'Checked In' : 'Not Checked In'}
@@ -320,20 +319,19 @@ export default function Dashboard() {
           }
         >
           {loading ? (
-             <Loader2 className="w-4 h-4 animate-spin mr-2" />
+            <Loader2 className="w-4 h-4 animate-spin mr-2" />
           ) : (
-             <Clock className="w-4 h-4 mr-2" />
+            <Clock className="w-4 h-4 mr-2" />
           )}
           {checkedIn ? 'Check Out' : 'Check In'}
         </Button>
       </div>
 
       {/* Office Hours Info */}
-      <div className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm ${
-        isWithinHours 
-          ? 'bg-success/10 text-success' 
-          : 'bg-destructive/10 text-destructive'
-      }`}>
+      <div className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm ${isWithinHours
+        ? 'bg-success/10 text-success'
+        : 'bg-destructive/10 text-destructive'
+        }`}>
         <Clock className="w-4 h-4" />
         <span>
           Office hours: <strong>{formatOfficeTime(officeHours.start)} – {formatOfficeTime(officeHours.end)}</strong>
@@ -410,9 +408,8 @@ export default function Dashboard() {
           {todayTasks.map((task, i) => (
             <div key={i} className="flex items-center justify-between py-2 border-b border-border/50 last:border-0">
               <span
-                className={`text-sm ${
-                  task.status === 'completed' ? 'line-through text-muted-foreground' : ''
-                }`}
+                className={`text-sm ${task.status === 'completed' ? 'line-through text-muted-foreground' : ''
+                  }`}
               >
                 {task.title}
               </span>
