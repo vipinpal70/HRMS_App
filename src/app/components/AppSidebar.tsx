@@ -56,11 +56,11 @@ export default function AppSidebar() {
 
   return (
     <aside
-      className={`flex flex-col bg-sidebar text-sidebar-foreground transition-all duration-300 ${collapsed ? 'w-[68px]' : 'w-[250px]'
+      className={`flex flex-col bg-gray-200 border-r shadow-sm text-sidebar-foreground transition-all duration-300 ${collapsed ? 'w-[68px]' : 'w-[250px]'
         } h-screen sticky top-0`}
     >
       {/* Logo */}
-      <div className="flex items-center gap-3 px-4 py-5 border-b border-sidebar-border">
+      <div className="flex items-center gap-3 px-4 py-5 border-b border-gray-300">
         <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-sidebar-primary text-sidebar-primary-foreground font-bold text-sm">
           {settings?.organization_name?.charAt(0)}
         </div>
@@ -90,7 +90,7 @@ export default function AppSidebar() {
         })}
       </nav>
 
-      <div className="px-3 py-3 border-t border-sidebar-border">
+      <div className="px-3 py-3 border-t border-gray-300">
         {/* Notifications (Mobile/Collapsed view integration or just separate) */}
         {/* We place it near user profile for now */}
 

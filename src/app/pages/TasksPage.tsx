@@ -12,8 +12,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '../components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
 import { useAuth } from '../context/AuthContext';
-import { getTasks, createTask, getEmployeesList } from '../actions/tasks';
-import { toast } from 'sonner';
+import { getTasks, createTask, getEmployeesList, updateTaskStatus } from '../actions/tasks';
+import { toast } from 'react-hot-toast';
+import { useTransition } from 'react';
 import { cn } from '@/lib/utils';
 
 type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';
@@ -24,6 +25,8 @@ interface Task {
   description?: string;
   status: TaskStatus;
   priority: 'low' | 'medium' | 'high' | 'critical';
+  start_day: string;
+  end_day: string;
   due_date?: string;
   assignee_name?: string;
   assignee_email?: string;
@@ -57,73 +60,72 @@ export default function TasksPage() {
   const [loading, setLoading] = useState(true);
   const [viewAll, setViewAll] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  
+  const [employeeFilter, setEmployeeFilter] = useState<string>('all');
+  const [isPending, startTransition] = useTransition();
+
   // Add Task Form State
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [employees, setEmployees] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
   const [openAssignee, setOpenAssignee] = useState(false);
-  const [assigneeId, setAssigneeId] = useState('');
+  const [selectedAssigneeIds, setSelectedAssigneeIds] = useState<string[]>([]);
 
-  // Date Range State (default: current week Monday–Sunday)
-  const getWeekDates = () => {
+  // Date Range State (default: current month)
+  const getMonthDates = () => {
     const now = new Date();
-    const dayOfWeek = now.getDay();
-    const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-    const monday = new Date(now);
-    monday.setDate(now.getDate() + mondayOffset);
-    const sunday = new Date(monday);
-    sunday.setDate(monday.getDate() + 6);
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
     return {
-      start: monday.toISOString().split('T')[0],
-      end: sunday.toISOString().split('T')[0]
+      start: firstDay.toISOString().split('T')[0],
+      end: lastDay.toISOString().split('T')[0]
     };
   };
 
-  const [dateRange, setDateRange] = useState(getWeekDates);
+  const [dateRange, setDateRange] = useState(getMonthDates);
 
   const canManageTasks = user?.role === 'admin' || user?.role === 'hr';
 
-  const fetchTasks = async () => {
-    setLoading(true);
+  const fetchTasks = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const userId = viewAll ? 'all' : undefined;
       const data = await getTasks(
         userId,
         viewAll ? dateRange.start : undefined,
-        viewAll ? dateRange.end : undefined
+        viewAll ? dateRange.end : undefined,
+        viewAll && employeeFilter !== 'all' ? employeeFilter : undefined
       );
       setTasks(data as any);
     } catch (error) {
       console.error('Failed to load tasks:', error);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
   useEffect(() => {
     fetchTasks();
-  }, [viewAll, dateRange]);
+  }, [viewAll, dateRange, employeeFilter]);
 
   useEffect(() => {
-    if (canManageTasks && isAddOpen) {
+    if (canManageTasks && (isAddOpen || viewAll)) {
       getEmployeesList().then(setEmployees);
-      setAssigneeId('');
+      if (isAddOpen) setSelectedAssigneeIds([]);
     }
-  }, [canManageTasks, isAddOpen]);
+  }, [canManageTasks, isAddOpen, viewAll]);
 
   const handleCreateTask = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!assigneeId) {
-        toast.error('Please assign the task to an employee.');
-        return;
+    if (selectedAssigneeIds.length === 0) {
+      toast.error('Please assign the task to at least one employee.');
+      return;
     }
     setSaving(true);
     const formData = new FormData(e.currentTarget);
-    formData.set('assigned_to', assigneeId); // Ensure assignee ID is set
-    
+    formData.set('assigned_to', selectedAssigneeIds.join(',')); // Comma-separated for server action
+
     const result = await createTask(formData);
-    
+
     if (result.success) {
       toast.success(result.message);
       setIsAddOpen(false);
@@ -134,11 +136,17 @@ export default function TasksPage() {
     setSaving(false);
   };
 
+  const toggleAssignee = (id: string) => {
+    setSelectedAssigneeIds(prev =>
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
+  };
+
   const filtered = tasks.filter((t) => {
-    const matchesSearch = !viewAll || !searchQuery || 
-      (t.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
-       t.assignee_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-       t.assignee_email?.toLowerCase().includes(searchQuery.toLowerCase()));
+    const matchesSearch = !viewAll || !searchQuery ||
+      (t.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        t.assignee_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        t.assignee_email?.toLowerCase().includes(searchQuery.toLowerCase()));
     return matchesSearch;
   });
 
@@ -146,6 +154,36 @@ export default function TasksPage() {
   const completedCount = filtered.filter(t => t.status === 'completed').length;
   const totalCount = filtered.length;
   const progress = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
+
+  const handleStatusChange = async (taskId: string, newStatus: string) => {
+    // 1. Optimistic Update: Update local state immediately
+    const previousTasks = [...tasks];
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus as TaskStatus } : t));
+
+    startTransition(async () => {
+      try {
+        const result = await updateTaskStatus(taskId, newStatus);
+
+        if (result.success && result.data) {
+          toast.success(result.message);
+          // 2. Sync with server data: Use the data returned from server
+          setTasks(prev => prev.map(t => t.id === taskId ? {
+            ...t,
+            status: result.data.status as TaskStatus,
+            updated_at: result.data.updated_at
+          } : t));
+          // We don't fetchTasks(true) immediately here to avoid write-read race conditions
+          // The local state is already synced with the server response
+        } else {
+          toast.error(result.error || 'Failed to update status');
+          setTasks(previousTasks); // Revert on failure
+        }
+      } catch (err) {
+        toast.error('An unexpected error occurred.');
+        setTasks(previousTasks); // Revert on exception
+      }
+    });
+  };
 
   return (
     <div className="space-y-6 animate-fade-up">
@@ -182,80 +220,84 @@ export default function TasksPage() {
                       <Label htmlFor="title">Task Title</Label>
                       <Input id="title" name="title" required placeholder="e.g. Update Documentation" />
                     </div>
-                    
+
                     <div className="space-y-2">
                       <Label htmlFor="description">Description</Label>
                       <Textarea id="description" name="description" placeholder="Add details..." />
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
-                       <div className="space-y-2">
-                         <Label htmlFor="priority">Priority</Label>
-                         <Select name="priority" defaultValue="medium">
-                           <SelectTrigger>
-                             <SelectValue placeholder="Select priority" />
-                           </SelectTrigger>
-                           <SelectContent>
-                             <SelectItem value="low">Low</SelectItem>
-                             <SelectItem value="medium">Medium</SelectItem>
-                             <SelectItem value="high">High</SelectItem>
-                             <SelectItem value="critical">Critical</SelectItem>
-                           </SelectContent>
-                         </Select>
-                       </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="priority">Priority</Label>
+                        <Select name="priority" defaultValue="medium">
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select priority" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="low">Low</SelectItem>
+                            <SelectItem value="medium">Medium</SelectItem>
+                            <SelectItem value="high">High</SelectItem>
+                            <SelectItem value="critical">Critical</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
 
-                       <div className="space-y-2 flex flex-col">
-                         <Label htmlFor="assigned_to">Assign To</Label>
-                         <input type="hidden" name="assigned_to" value={assigneeId} />
-                         <Popover open={openAssignee} onOpenChange={setOpenAssignee}>
-                           <PopoverTrigger asChild>
-                             <Button
-                               variant="outline"
-                               role="combobox"
-                               aria-expanded={openAssignee}
-                               className="w-full justify-between font-normal"
-                             >
-                               {assigneeId
-                                 ? employees.find((emp) => emp.id === assigneeId)?.name || employees.find((emp) => emp.id === assigneeId)?.email
-                                 : "Select employee..."}
-                               <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                             </Button>
-                           </PopoverTrigger>
-                           <PopoverContent className="w-[300px] p-0" align="start">
-                             <Command>
-                               <CommandInput placeholder="Search employee..." />
-                               <CommandList>
-                                 <CommandEmpty>No employee found.</CommandEmpty>
-                                 <CommandGroup>
-                                   {employees.map((emp) => (
-                                     <CommandItem
-                                       key={emp.id}
-                                       value={emp.name || emp.email}
-                                       onSelect={() => {
-                                         setAssigneeId(emp.id);
-                                         setOpenAssignee(false);
-                                       }}
-                                     >
-                                       <Check
-                                         className={cn(
-                                           "mr-2 h-4 w-4",
-                                           assigneeId === emp.id ? "opacity-100" : "opacity-0"
-                                         )}
-                                       />
-                                       {emp.name || emp.email} ({emp.role})
-                                     </CommandItem>
-                                   ))}
-                                 </CommandGroup>
-                               </CommandList>
-                             </Command>
-                           </PopoverContent>
-                         </Popover>
-                       </div>
+                      <div className="space-y-2 flex flex-col">
+                        <Label htmlFor="assigned_to">Assign To (Multiple allowed)</Label>
+                        <Popover open={openAssignee} onOpenChange={setOpenAssignee}>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="outline"
+                              role="combobox"
+                              aria-expanded={openAssignee}
+                              className="w-full justify-between font-normal"
+                            >
+                              {selectedAssigneeIds.length > 0
+                                ? `${selectedAssigneeIds.length} employee(s) selected`
+                                : "Select employees..."}
+                              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-[300px] p-0" align="start">
+                            <Command>
+                              <CommandInput placeholder="Search employee..." />
+                              <CommandList>
+                                <CommandEmpty>No employee found.</CommandEmpty>
+                                <CommandGroup>
+                                  {employees.map((emp) => (
+                                    <CommandItem
+                                      key={emp.id}
+                                      value={emp.name || emp.email}
+                                      onSelect={() => toggleAssignee(emp.id)}
+                                    >
+                                      <div className={cn(
+                                        "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border border-primary",
+                                        selectedAssigneeIds.includes(emp.id)
+                                          ? "bg-primary text-primary-foreground"
+                                          : "opacity-50 [&_svg]:invisible"
+                                      )}>
+                                        <Check className="h-3 w-3" />
+                                      </div>
+                                      {emp.name || emp.email} ({emp.role})
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              </CommandList>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
+                      </div>
                     </div>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="due_date">Due Date</Label>
-                      <Input id="due_date" name="due_date" type="date" />
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="start_day">Start Date</Label>
+                        <Input id="start_day" name="start_day" type="date" defaultValue={new Date().toISOString().split('T')[0]} required />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="end_day">End Date</Label>
+                        <Input id="end_day" name="end_day" type="date" defaultValue={new Date().toISOString().split('T')[0]} required />
+                      </div>
                     </div>
 
                     <DialogFooter className="mt-6">
@@ -274,44 +316,60 @@ export default function TasksPage() {
       </div>
 
       {viewAll && canManageTasks && (
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input 
-              placeholder="Search tasks by title or assignee..." 
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9"
-            />
-          </div>
-
-          {/* Date Range Filter */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="flex items-center gap-1.5">
-              <CalendarIcon className="w-4 h-4 text-muted-foreground" />
-              <input
-                type="date"
-                value={dateRange.start}
-                onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
-                className="px-2 py-1.5 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-              <span className="text-muted-foreground text-sm">to</span>
-              <input
-                type="date"
-                value={dateRange.end}
-                onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
-                className="px-2 py-1.5 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+        <div className="flex flex-col lg:flex-row gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 flex-1">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by title..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9"
               />
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setDateRange(getWeekDates())}
-              className="text-xs"
-            >
-              This Week
-            </Button>
+
+            <Select value={employeeFilter} onValueChange={setEmployeeFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="All Employees" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Employees</SelectItem>
+                {employees.map(emp => (
+                  <SelectItem key={emp.id} value={emp.id}>
+                    {emp.name || emp.email}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Date Range Filter */}
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 flex-1">
+                <CalendarIcon className="w-4 h-4 text-muted-foreground shrink-0" />
+                <input
+                  type="date"
+                  value={dateRange.start}
+                  onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
+                  className="w-full px-2 py-1.5 rounded-md border border-input bg-background text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+                <span className="text-muted-foreground text-xs">to</span>
+                <input
+                  type="date"
+                  value={dateRange.end}
+                  onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
+                  className="w-full px-2 py-1.5 rounded-md border border-input bg-background text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
+            </div>
           </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setDateRange(getMonthDates())}
+            className="text-xs h-10 px-4"
+          >
+            This Month
+          </Button>
         </div>
       )}
 
@@ -329,43 +387,64 @@ export default function TasksPage() {
       {/* Task List */}
       <div className="grid gap-3">
         {loading ? (
-             <div className="text-center py-10"><Loader2 className="w-8 h-8 animate-spin mx-auto text-muted-foreground" /></div>
+          <div className="text-center py-10"><Loader2 className="w-8 h-8 animate-spin mx-auto text-muted-foreground" /></div>
         ) : filtered.length === 0 ? (
-             <div className="text-center py-10 text-muted-foreground bg-muted/20 rounded-lg">No tasks found.</div>
+          <div className="text-center py-10 text-muted-foreground bg-muted/20 rounded-lg">No tasks found.</div>
         ) : (
           filtered.map((task) => {
-            const Icon = statusIcons[task.status] || Circle;
             return (
               <div
                 key={task.id}
-                className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 rounded-lg border border-border bg-card hover:shadow-md transition-all"
+                className="flex flex-col sm:flex-row sm:items-center gap-4 p-4 rounded-lg border border-border bg-card hover:shadow-md transition-all"
               >
-                <div className="flex items-start gap-3 flex-1">
-                   <div className={`mt-1 ${statusColors[task.status]}`}>
-                      <Icon className="w-5 h-5" />
-                   </div>
-                   <div className="flex-1">
-                      <h3 className={`font-medium ${task.status === 'completed' ? 'line-through text-muted-foreground' : ''}`}>
+                <div className="flex-1">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h3 className={`font-semibold text-lg ${task.status === 'completed' ? 'line-through text-muted-foreground' : ''}`}>
                         {task.title}
                       </h3>
-                      {task.description && <p className="text-sm text-muted-foreground mt-1 line-clamp-1">{task.description}</p>}
-                      
-                      <div className="flex flex-wrap items-center gap-3 mt-2 text-xs text-muted-foreground">
-                         {viewAll && task.assignee_name && (
-                            <span className="flex items-center gap-1 bg-secondary px-2 py-0.5 rounded text-secondary-foreground">
-                               <Users className="w-3 h-3" /> {task.assignee_name}
-                            </span>
-                         )}
-                         <span className={`px-2 py-0.5 rounded capitalize ${priorityColors[task.priority]}`}>
-                            {task.priority}
-                         </span>
-                         {task.due_date && (
-                            <span className="flex items-center gap-1">
-                               <CalendarIcon className="w-3 h-3" /> {new Date(task.due_date).toLocaleDateString()}
-                            </span>
-                         )}
-                      </div>
-                   </div>
+                      {task.description && <p className="text-sm text-muted-foreground mt-1">{task.description}</p>}
+                    </div>
+
+                    <div className="w-40">
+                      <Select
+                        value={task.status}
+                        onValueChange={(val) => handleStatusChange(task.id, val)}
+                        disabled={isPending}
+                      >
+                        <SelectTrigger className={cn(
+                          "h-8 text-xs font-medium",
+                          task.status === 'completed' && "bg-success/10 text-success border-success/20",
+                          task.status === 'in_progress' && "bg-info/10 text-info border-info/20",
+                          task.status === 'pending' && "bg-muted text-muted-foreground border-border"
+                        )}>
+                          <SelectValue placeholder="Status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="pending">Pending</SelectItem>
+                          <SelectItem value="in_progress">In Progress</SelectItem>
+                          <SelectItem value="completed">Completed</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-4 mt-3 text-xs text-muted-foreground">
+                    {viewAll && task.assignee_name && (
+                      <span className="flex items-center gap-1.5 bg-secondary px-2.5 py-1 rounded-md text-secondary-foreground font-medium">
+                        <Users className="w-3.5 h-3.5" /> {task.assignee_name}
+                      </span>
+                    )}
+                    <span className={`px-2.5 py-1 rounded-md capitalize font-medium ${priorityColors[task.priority]}`}>
+                      {task.priority}
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <CalendarIcon className="w-3.5 h-3.5" />
+                      <span>{new Date(task.start_day).toLocaleDateString()}</span>
+                      <span>-</span>
+                      <span>{new Date(task.end_day).toLocaleDateString()}</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             );
