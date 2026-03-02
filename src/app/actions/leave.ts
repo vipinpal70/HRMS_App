@@ -17,27 +17,37 @@ export async function getLeaveRequests(userId?: string) {
 
     // RBAC Logic
     if (userId === 'all') {
-       const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
-       if (profile?.role !== 'admin' && profile?.role !== 'hr') {
-          query = query.eq('user_id', user.id);
-       }
+      const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
+      if (profile?.role !== 'admin' && profile?.role !== 'hr') {
+        query = query.eq('user_id', user.id);
+      }
     } else {
-       // Default to own leaves unless Admin specifically requests all
-       // Actually, getLeaveRequests usually implies "my leaves" OR "all leaves if admin"
-       // Let's check role first
-       const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
-       if (profile?.role !== 'admin' && profile?.role !== 'hr') {
-          query = query.eq('user_id', user.id);
-       }
-       // If admin, they see all by default unless filtered (which we handle on client or add filter here)
+      // Default to own leaves unless Admin specifically requests all
+      // Actually, getLeaveRequests usually implies "my leaves" OR "all leaves if admin"
+      // Let's check role first
+      const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
+      if (profile?.role !== 'admin' && profile?.role !== 'hr') {
+        query = query.eq('user_id', user.id);
+      }
+      // If admin, they see all by default unless filtered (which we handle on client or add filter here)
     }
 
     const { data, error } = await query.order('created_at', { ascending: false });
 
     if (error) throw error;
 
+    // Reverse map DB category → UI type
+    const typeMap: Record<string, string> = {
+      'leave': 'full-day',
+      'halfday': 'half-day',
+      'wfh': 'wfh',
+    };
+
     return data.map(req => ({
       ...req,
+      type: typeMap[req.category] || req.category, // DB 'category' → UI 'type'
+      start_date: req.start_day,
+      end_date: req.end_day,
       user_name: (req.user as any)?.name || (req.user as any)?.email || 'Unknown',
       user_email: (req.user as any)?.email || ''
     }));
@@ -54,16 +64,25 @@ export async function createLeaveRequest(formData: FormData) {
 
     if (!user) return { error: 'Unauthorized' };
 
-    const type = formData.get('type') as string;
+    const uiType = formData.get('type') as string;
     const start_date = formData.get('start_date') as string;
     const end_date = formData.get('end_date') as string;
     const reason = formData.get('reason') as string;
 
+    // Map UI type → DB category (constraint allows: 'leave', 'wfh', 'halfday')
+    const categoryMap: Record<string, string> = {
+      'full-day': 'leave',
+      'half-day': 'halfday',
+      'wfh': 'wfh',
+    };
+    const category = categoryMap[uiType] || uiType;
+    console.log('createLeaveRequest payload:', { uiType, category, start_date, end_date, reason });
+
     const { error } = await supabase.from('leave_requests').insert({
       user_id: user.id,
-      type,
-      start_date,
-      end_date,
+      category, // DB column
+      start_day: start_date,
+      end_day: end_date,
       reason,
       status: 'pending'
     });
@@ -82,7 +101,7 @@ export async function updateLeaveStatus(id: string, status: 'approved' | 'reject
   try {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
-    
+
     // Check Admin Role
     const { data: profile } = await supabase.from('profiles').select('role').eq('id', user!.id).single();
     if (profile?.role !== 'admin' && profile?.role !== 'hr') {
