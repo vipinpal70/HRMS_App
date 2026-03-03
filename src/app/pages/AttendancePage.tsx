@@ -58,21 +58,21 @@ function isToday(dateStr: string) {
 }
 
 const statusConfig: Record<string, { label: string; cls: string }> = {
-  present:       { label: 'Present',     cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' },
-  on_time:       { label: 'On Time',     cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' },
-  late:          { label: 'Late',        cls: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' },
-  absent:        { label: 'Absent',      cls: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' },
-  half_day:      { label: 'Half Day',    cls: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' },
-  'half-day':    { label: 'Half Day',    cls: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' },
-  wfh:           { label: 'WFH',         cls: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
-  leave:         { label: 'Leave',       cls: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' },
-  auto_checkout: { label: 'Auto C/O',    cls: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400' },
+  present:       { label: 'Present',     cls: 'bg-emerald-600 text-white' },
+  on_time:       { label: 'On Time',     cls: 'bg-emerald-600 text-white' },
+  late:          { label: 'Late',        cls: 'bg-amber-500 text-white' },
+  absent:        { label: 'Absent',      cls: 'bg-red-500 text-white' },
+  half_day:      { label: 'Half Day',    cls: 'bg-orange-500 text-white' },
+  'half-day':    { label: 'Half Day',    cls: 'bg-orange-500 text-white' },
+  wfh:           { label: 'WFH',         cls: 'bg-blue-500 text-white' },
+  leave:         { label: 'Leave',       cls: 'bg-purple-500 text-white' },
+  auto_checkout: { label: 'Auto C/O',    cls: 'bg-slate-500 text-white' },
 };
 
 function StatusBadge({ status }: { status: string }) {
-  const cfg = statusConfig[status] ?? { label: status, cls: 'bg-muted text-muted-foreground' };
+  const cfg = statusConfig[status] ?? { label: status, cls: 'bg-gray-500 text-white' };
   return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${cfg.cls}`}>
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold capitalize shadow-sm ${cfg.cls}`}>
       {cfg.label}
     </span>
   );
@@ -153,31 +153,37 @@ function MonthPicker({
 // ─── Stats Cards ──────────────────────────────────────────────────────────────
 
 function StatsRow({ records }: { records: AttendanceRecord[] }) {
-  const present = records.filter(r => ['present', 'on_time'].includes(r.status)).length;
+  // "Present" = total check-ins (any record that has a check_in time)
+  const present = records.filter(r => r.check_in != null).length;
+  // "Late" = only records explicitly marked as late
   const late = records.filter(r => r.status === 'late').length;
   const absent = records.filter(r => r.status === 'absent').length;
-  const wfh = records.filter(r => r.status === 'wfh').length;
+  const wfh = records.filter(r => r.work_type === 'wfh' || r.status === 'wfh').length;
   const totalMin = records.reduce((acc, r) => acc + (r.total_minutes ?? 0), 0);
   const totalHrs = Math.floor(totalMin / 60);
   const totalMins = totalMin % 60;
 
   const stats = [
-    { label: 'Present', value: present, icon: UserCheck, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
-    { label: 'Late',    value: late,    icon: Clock,     color: 'text-amber-600',   bg: 'bg-amber-50 dark:bg-amber-900/20' },
-    { label: 'Absent',  value: absent,  icon: AlertCircle, color: 'text-red-600',   bg: 'bg-red-50 dark:bg-red-900/20' },
-    { label: 'WFH',     value: wfh,     icon: Coffee,    color: 'text-blue-600',    bg: 'bg-blue-50 dark:bg-blue-900/20' },
-    { label: 'Total Hours', value: `${totalHrs}h ${totalMins}m`, icon: TrendingUp, color: 'text-violet-600', bg: 'bg-violet-50 dark:bg-violet-900/20' },
+    { label: 'Present',     value: present,                        icon: UserCheck,   accentColor: '#10b981', iconBg: 'bg-emerald-500' },
+    { label: 'Late',        value: late,                           icon: Clock,       accentColor: '#f59e0b', iconBg: 'bg-amber-500' },
+    { label: 'Absent',      value: absent,                         icon: AlertCircle, accentColor: '#ef4444', iconBg: 'bg-red-500' },
+    { label: 'WFH',         value: wfh,                            icon: Coffee,      accentColor: '#3b82f6', iconBg: 'bg-blue-500' },
+    { label: 'Total Hours', value: `${totalHrs}h ${totalMins}m`,   icon: TrendingUp,  accentColor: '#8b5cf6', iconBg: 'bg-violet-500' },
   ];
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
       {stats.map(s => (
-        <div key={s.label} className={`stat-card flex items-center gap-3 ${s.bg}`}>
-          <div className={`p-2 rounded-lg bg-background/60 ${s.color}`}>
+        <div
+          key={s.label}
+          className="flex items-center gap-3 rounded-xl border border-border/50 bg-card p-4 shadow-sm transition-all duration-200 hover:shadow-md"
+          style={{ borderLeftWidth: '4px', borderLeftColor: s.accentColor }}
+        >
+          <div className={`p-2 rounded-lg ${s.iconBg} text-white`}>
             <s.icon className="w-4 h-4" />
           </div>
           <div>
-            <p className={`text-lg font-bold ${s.color}`}>{s.value}</p>
+            <p className="text-lg font-bold text-foreground">{s.value}</p>
             <p className="text-xs text-muted-foreground">{s.label}</p>
           </div>
         </div>
@@ -256,12 +262,12 @@ function AttendanceTable({
                   </span>
                 </div>
               </td>
-              <td className="py-3 px-3 font-mono text-xs">
+              <td className="py-3 px-3 text-sm font-medium">
                 {record.check_in_display
                   ? <span className="text-emerald-600 dark:text-emerald-400">{record.check_in_display}</span>
                   : <span className="text-muted-foreground">—</span>}
               </td>
-              <td className="py-3 px-3 font-mono text-xs">
+              <td className="py-3 px-3 text-sm font-medium">
                 {record.check_out_display
                   ? <span className="text-sky-600 dark:text-sky-400">{record.check_out_display}</span>
                   : <span className="text-muted-foreground">—</span>}
