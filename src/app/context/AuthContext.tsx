@@ -62,6 +62,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const initializeAuth = async () => {
       try {
+        setLoading(true);
+        // 1. Check for tokens in URL fragment (Implicit Flow / Magic Links)
+        if (typeof window !== 'undefined' && window.location.hash) {
+          const hashParams = new URLSearchParams(window.location.hash.substring(1));
+          const accessToken = hashParams.get('access_token');
+          const refreshToken = hashParams.get('refresh_token');
+
+          if (accessToken && refreshToken) {
+            console.log('Found tokens in URL hash, setting session...');
+            const { data: { session }, error: sessionError } = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken,
+            });
+
+            if (!sessionError && session) {
+              console.log('Session established from hash tokens');
+              const profile = await fetchProfile(session.user.id);
+              setUser(profile || {
+                id: session.user.id,
+                name: session.user.user_metadata.full_name || session.user.email?.split('@')[0] || 'User',
+                email: session.user.email!,
+                role: 'emp'
+              });
+
+              // Clear hash and redirect to home
+              window.history.replaceState(null, '', window.location.pathname);
+              if (window.location.pathname === '/login') {
+                router.push('/');
+              }
+              setLoading(false);
+              return;
+            }
+          }
+        }
+
+        // 2. Fallback to standard getSession
         const { data: { session } } = await supabase.auth.getSession()
 
         if (session?.user) {

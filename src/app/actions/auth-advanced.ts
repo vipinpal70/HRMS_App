@@ -67,11 +67,17 @@ export async function loginWithIp(email: string) {
     }
 
     // 4. Generate Magic Link (Instant Login)
+    const host = headersList.get('host') || 'localhost:3000';
+    const protocol = host.includes('localhost') ? 'http' : 'https';
+    const redirectUrl = `${protocol}://${host}/auth/confirm`;
+
+    console.log(`Generating magic link with redirect to: ${redirectUrl}`);
+
     const { data, error } = await supabaseAdmin.auth.admin.generateLink({
       type: 'magiclink',
       email: email,
       options: {
-        redirectTo: 'http://localhost:3000/auth/confirm'
+        redirectTo: redirectUrl
       }
     });
 
@@ -107,11 +113,18 @@ export async function loginWithGps(email: string, lat: number, lng: number) {
     }
 
     // 3. Generate Magic Link
+    const headersList = await headers();
+    const host = headersList.get('host') || 'localhost:3000';
+    const protocol = host.includes('localhost') ? 'http' : 'https';
+    const redirectUrl = `${protocol}://${host}/auth/confirm`;
+
+    console.log(`Generating magic link with redirect to: ${redirectUrl}`);
+
     const { data, error } = await supabaseAdmin.auth.admin.generateLink({
       type: 'magiclink',
       email: email,
       options: {
-        redirectTo: 'http://localhost:3000/auth/confirm'
+        redirectTo: redirectUrl
       }
     });
 
