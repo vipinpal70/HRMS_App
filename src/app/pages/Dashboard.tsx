@@ -8,34 +8,55 @@ import {
   Wifi,
   CheckCircle2,
   XCircle,
-  TrendingUp,
   CalendarCheck,
   ListTodo,
   Timer,
   Star,
-  Palmtree,
-  Loader2,
+  CloudSun,
+  Loader2
 } from 'lucide-react';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Progress } from '../components/ui/progress';
 import { Calendar } from '../components/ui/calendar';
-import { checkIn, checkOut, getTodayStatus } from '../actions/attendance';
+import { getTodayStatus, checkIn, checkOut, getAttendanceHistory } from '../actions/attendance';
+import { getTasks } from '../actions/tasks';
+import { getQuoteOfDay } from '../actions/quotes';
 import { getCompanySettings } from '../actions/settings';
 import { toast } from 'react-hot-toast';
 
 const holidays = [
-  { date: new Date(2026, 1, 14), label: "Valentine's Day", type: 'holiday' as const },
-  { date: new Date(2026, 1, 26), label: 'Republic Day', type: 'holiday' as const },
-  { date: new Date(2026, 2, 1), label: 'New Month Kickoff', type: 'event' as const },
-  { date: new Date(2026, 2, 17), label: "St. Patrick's Day", type: 'event' as const },
-  { date: new Date(2026, 3, 2), label: 'Good Friday', type: 'holiday' as const },
+  { date: new Date(2026, 0, 1), label: 'New Year', type: 'holiday' as const },
+  { date: new Date(2026, 0, 26), label: 'Republic Day', type: 'holiday' as const },
+  { date: new Date(2026, 1, 16), label: 'Mahashivratri', type: 'holiday' as const },
+  { date: new Date(2026, 2, 4), label: 'Holi', type: 'holiday' as const },
+  { date: new Date(2026, 7, 28), label: 'Raksha Bandhan', type: 'holiday' as const },
+  { date: new Date(2026, 9, 2), label: 'Gandhi Jayanthi', type: 'holiday' as const },
+  { date: new Date(2026, 9, 20), label: 'Dusshera', type: 'holiday' as const },
+  { date: new Date(2026, 10, 9), label: 'Post Diwali', type: 'holiday' as const },
 ];
 
 const holidayTypeStyles = {
   holiday: 'bg-destructive/10 text-destructive',
   event: 'bg-accent/10 text-accent',
 };
+
+interface AttendanceRecord {
+  id: string;
+  date: string;
+  check_in: string | null;
+  check_out: string | null;
+  check_in_display: string | null;
+  check_out_display: string | null;
+  hours_display: string | null;
+  total_minutes: number | null;
+  status: string;
+  work_type: string | null;
+  employee_name?: string;
+  employee_email?: string;
+  employee_emp_id?: string;
+  employee_designation?: string;
+}
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -49,14 +70,19 @@ export default function Dashboard() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [officeHours, setOfficeHours] = useState<{ start: string; end: string }>({ start: '09:00', end: '19:00' });
   const [isWithinHours, setIsWithinHours] = useState(true);
+  const [records, setRecords] = useState<AttendanceRecord[]>([]);
+  const [tasks, setTasks] = useState<any[]>([]);
+  const [quote, setQuote] = useState<{ q: string; a: string } | null>(null);
 
   // Fetch initial status + office hours
   useEffect(() => {
     async function fetchStatus() {
       try {
-        const [data, settings] = await Promise.all([
+        const [data, settings, history, tasklist] = await Promise.all([
           getTodayStatus(),
-          getCompanySettings()
+          getCompanySettings(),
+          getAttendanceHistory(),
+          getTasks()
         ]);
 
         if (data) {
@@ -71,6 +97,14 @@ export default function Dashboard() {
           const start = settings.office_start_time?.substring(0, 5) ?? '09:00';
           const end = settings.office_end_time?.substring(0, 5) ?? '19:00';
           setOfficeHours({ start, end });
+        }
+
+        if (history) {
+          setRecords(history as unknown as AttendanceRecord[]);
+        }
+
+        if (tasklist) {
+          setTasks(tasklist);
         }
       } catch (error) {
         console.error('Error fetching status:', error);
@@ -111,6 +145,17 @@ export default function Dashboard() {
     }
     return () => clearInterval(interval);
   }, [checkedIn, checkInTime]);
+
+  // daily motivation quotes
+  useEffect(() => {
+    const fetchQuotes = async () => {
+      const data = await getQuoteOfDay();
+      if (data) {
+        setQuote(data);
+      }
+    }
+    fetchQuotes();
+  }, [])
 
   const handleCheckIn = async () => {
     setLoading(true);
@@ -211,19 +256,22 @@ export default function Dashboard() {
     day: 'numeric',
   });
 
+
+  // "Present" = total check-ins (any record that has a check_in time)
+  const present = records.filter(r => (r as any).check_in != null).length;
+  const totalMin = records.reduce((acc, r) => acc + (r.total_minutes ?? 0), 0);
+  const tasksDone = tasks.filter(t => t.status === 'completed').length;
+  const totalWorkDays = records.length;
+
   const stats = [
-    { label: 'Present Days', value: '18', icon: CalendarCheck, color: 'text-success' },
-    { label: 'Tasks Done', value: '12', icon: ListTodo, color: 'text-info' },
-    { label: 'Avg Hours', value: '8.2h', icon: Timer, color: 'text-accent' },
-    { label: 'Streak', value: '5 days', icon: TrendingUp, color: 'text-primary' },
+    { label: 'Present Days', value: present.toString(), icon: CalendarCheck, color: 'text-success' },
+    { label: 'Tasks Done', value: tasksDone.toString(), icon: ListTodo, color: 'text-info' },
+    { label: 'Avg Hours', value: records.length > 0 ? `${(totalMin / (records.length * 60)).toFixed(1)}h` : '0h', icon: Timer, color: 'text-accent' },
+    { label: 'Work Days', value: totalWorkDays.toString(), icon: CalendarCheck, color: 'text-primary' },
   ];
 
-  const todayTasks = [
-    { title: 'Review PR #342', status: 'completed' as const },
-    { title: 'Update API documentation', status: 'in_progress' as const },
-    { title: 'Team standup meeting', status: 'completed' as const },
-    { title: 'Deploy staging build', status: 'pending' as const },
-  ];
+  const todayStr = new Date().toISOString().split('T')[0];
+  const todayTasks = tasks.filter(t => t.start_day === todayStr);
 
   const statusColors = {
     completed: 'bg-success/10 text-success',
@@ -261,6 +309,9 @@ export default function Dashboard() {
           Good {new Date().getHours() < 12 ? 'Morning' : new Date().getHours() < 17 ? 'Afternoon' : 'Evening'}, {user?.name || user?.email?.split('@')[0] || 'User'}
         </h1>
         <p className="text-muted-foreground text-sm mt-1">{today}</p>
+        <p className="text-sm italic mt-2 text-primary/80 bg-primary/10 p-2 rounded-lg">
+          {quote ? `"${quote.q}" — ${quote.a}` : 'Loading inspiration...'}
+        </p>
       </div>
 
       {/* Check-in Card */}
@@ -376,7 +427,7 @@ export default function Dashboard() {
             {upcomingHolidays.map((h, i) => (
               <div key={i} className="flex items-center gap-3 py-2.5 border-b border-border/50 last:border-0">
                 <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${holidayTypeStyles[h.type]}`}>
-                  {h.type === 'holiday' ? <Palmtree className="w-4 h-4" /> : <Star className="w-4 h-4" />}
+                  {h.type === 'holiday' ? <CloudSun className="w-4 h-4" /> : <Star className="w-4 h-4" />}
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">{h.label}</p>
@@ -404,31 +455,35 @@ export default function Dashboard() {
             {todayTasks.filter((t) => t.status === 'completed').length}/{todayTasks.length} done
           </Badge>
         </div>
-        <div className="space-y-3">
-          {todayTasks.map((task, i) => (
-            <div key={i} className="flex items-center justify-between py-2 border-b border-border/50 last:border-0">
-              <span
-                className={`text-sm ${task.status === 'completed' ? 'line-through text-muted-foreground' : ''
-                  }`}
-              >
-                {task.title}
-              </span>
-              <span className={`badge-status ${statusColors[task.status]}`}>
-                {task.status.replace('_', ' ')}
-              </span>
+        {todayTasks.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-4">No tasks assigned</p>
+        ) : (
+          <>
+            <div className="space-y-3">
+              {todayTasks.map((task, i) => (
+                <div key={i} className="flex items-center justify-between py-2 border-b border-border/50 last:border-0">
+                  <span
+                    className={`text-sm ${task.status === 'completed' ? 'line-through text-muted-foreground' : ''}`}
+                  >
+                    {task.title}
+                  </span>
+                  <span className={`badge-status ${statusColors[task.status as keyof typeof statusColors]}`}>
+                    {task.status.replace('_', ' ')}
+                  </span>
+                </div>
+              ))}
+
+            </div><div className="mt-4">
+              <div className="flex items-center justify-between text-xs text-muted-foreground mb-1.5">
+                <span>Progress</span>
+                <span>{Math.round((todayTasks.filter((t) => t.status === 'completed').length / todayTasks.length) * 100)}%</span>
+              </div>
+              <Progress
+                value={(todayTasks.filter((t) => t.status === 'completed').length / todayTasks.length) * 100}
+                className="h-2" />
             </div>
-          ))}
-        </div>
-        <div className="mt-4">
-          <div className="flex items-center justify-between text-xs text-muted-foreground mb-1.5">
-            <span>Progress</span>
-            <span>{Math.round((todayTasks.filter((t) => t.status === 'completed').length / todayTasks.length) * 100)}%</span>
-          </div>
-          <Progress
-            value={(todayTasks.filter((t) => t.status === 'completed').length / todayTasks.length) * 100}
-            className="h-2"
-          />
-        </div>
+          </>
+        )}
       </div>
     </div>
   );

@@ -8,13 +8,14 @@ import { Input } from '@/app/components/ui/input'
 import { Label } from '@/app/components/ui/label'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/app/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs'
-import { Wifi, MapPin, Mail, Loader2 } from 'lucide-react'
-import { toast } from 'sonner'
+import { Wifi, MapPin, Mail, Loader2, Eye, EyeOff } from 'lucide-react'
+import { toast } from 'react-hot-toast'
 
 export default function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [email, setEmail] = useState('')
+  const [viewPassword, setViewPassword] = useState(false)
 
   async function handleLogin(formData: FormData) {
     setLoading(true)
@@ -130,7 +131,12 @@ export default function LoginPage() {
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="password">Password</Label>
-                      <Input id="password" name="password" type="password" required />
+                      <div className="flex items-center gap-2">
+                        <Input id="password" name="password" type={viewPassword ? "text" : "password"} required />
+                        <Button type="button" onClick={() => setViewPassword(!viewPassword)} className="w-10 h-10">
+                          {viewPassword ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                        </Button>
+                      </div>
                     </div>
                     {error && <p className="text-sm text-red-500">{error}</p>}
                     <Button type="submit" className="w-full" disabled={loading}>

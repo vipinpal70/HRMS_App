@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 
+// Login a user
 export async function login(formData: FormData) {
   try {
     const supabase = await createClient()
@@ -35,6 +36,7 @@ export async function login(formData: FormData) {
   }
 }
 
+// create a new user
 export async function signup(formData: FormData) {
   try {
     const supabase = await createClient()

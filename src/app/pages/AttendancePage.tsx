@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { getMyAttendance, getEmployeesAttendance, getEmployeeListForFilter } from '../actions/attendance';
-import { toast } from 'sonner';
+import { toast } from 'react-hot-toast';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -40,8 +40,8 @@ interface Employee {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 const MONTH_NAMES = [
-  'January','February','March','April','May','June',
-  'July','August','September','October','November','December',
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
 ];
 
 function formatDateDisplay(dateStr: string) {
@@ -58,15 +58,15 @@ function isToday(dateStr: string) {
 }
 
 const statusConfig: Record<string, { label: string; cls: string }> = {
-  present:       { label: 'Present',     cls: 'bg-emerald-600 text-white' },
-  on_time:       { label: 'On Time',     cls: 'bg-emerald-600 text-white' },
-  late:          { label: 'Late',        cls: 'bg-amber-500 text-white' },
-  absent:        { label: 'Absent',      cls: 'bg-red-500 text-white' },
-  half_day:      { label: 'Half Day',    cls: 'bg-orange-500 text-white' },
-  'half-day':    { label: 'Half Day',    cls: 'bg-orange-500 text-white' },
-  wfh:           { label: 'WFH',         cls: 'bg-blue-500 text-white' },
-  leave:         { label: 'Leave',       cls: 'bg-purple-500 text-white' },
-  auto_checkout: { label: 'Auto C/O',    cls: 'bg-slate-500 text-white' },
+  present: { label: 'Present', cls: 'bg-emerald-600 text-white' },
+  on_time: { label: 'On Time', cls: 'bg-emerald-600 text-white' },
+  late: { label: 'Late', cls: 'bg-amber-500 text-white' },
+  absent: { label: 'Absent', cls: 'bg-red-500 text-white' },
+  half_day: { label: 'Half Day', cls: 'bg-orange-500 text-white' },
+  'half-day': { label: 'Half Day', cls: 'bg-orange-500 text-white' },
+  wfh: { label: 'WFH', cls: 'bg-blue-500 text-white' },
+  leave: { label: 'Leave', cls: 'bg-purple-500 text-white' },
+  auto_checkout: { label: 'Auto C/O', cls: 'bg-slate-500 text-white' },
 };
 
 function StatusBadge({ status }: { status: string }) {
@@ -89,16 +89,16 @@ function exportToCSV(records: AttendanceRecord[], fileName: string) {
   const rows = records.map(r =>
     isAdmin
       ? [
-          r.employee_name ?? '',
-          r.employee_emp_id ?? '',
-          r.employee_designation ?? '',
-          r.date,
-          r.check_in_display ?? '',
-          r.check_out_display ?? '',
-          r.hours_display ?? '',
-          r.work_type ?? '',
-          r.status,
-        ]
+        r.employee_name ?? '',
+        r.employee_emp_id ?? '',
+        r.employee_designation ?? '',
+        r.date,
+        r.check_in_display ?? '',
+        r.check_out_display ?? '',
+        r.hours_display ?? '',
+        r.work_type ?? '',
+        r.status,
+      ]
       : [r.date, r.check_in_display ?? '', r.check_out_display ?? '', r.hours_display ?? '', r.work_type ?? '', r.status]
   );
 
@@ -164,11 +164,11 @@ function StatsRow({ records }: { records: AttendanceRecord[] }) {
   const totalMins = totalMin % 60;
 
   const stats = [
-    { label: 'Present',     value: present,                        icon: UserCheck,   accentColor: '#10b981', iconBg: 'bg-emerald-500' },
-    { label: 'Late',        value: late,                           icon: Clock,       accentColor: '#f59e0b', iconBg: 'bg-amber-500' },
-    { label: 'Absent',      value: absent,                         icon: AlertCircle, accentColor: '#ef4444', iconBg: 'bg-red-500' },
-    { label: 'WFH',         value: wfh,                            icon: Coffee,      accentColor: '#3b82f6', iconBg: 'bg-blue-500' },
-    { label: 'Total Hours', value: `${totalHrs}h ${totalMins}m`,   icon: TrendingUp,  accentColor: '#8b5cf6', iconBg: 'bg-violet-500' },
+    { label: 'Present', value: present, icon: UserCheck, accentColor: '#10b981', iconBg: 'bg-emerald-500' },
+    { label: 'Late', value: late, icon: Clock, accentColor: '#f59e0b', iconBg: 'bg-amber-500' },
+    { label: 'Absent', value: absent, icon: AlertCircle, accentColor: '#ef4444', iconBg: 'bg-red-500' },
+    { label: 'WFH', value: wfh, icon: Coffee, accentColor: '#3b82f6', iconBg: 'bg-blue-500' },
+    { label: 'Total Hours', value: `${totalHrs}h ${totalMins}m`, icon: TrendingUp, accentColor: '#8b5cf6', iconBg: 'bg-violet-500' },
   ];
 
   return (
@@ -233,9 +233,8 @@ function AttendanceTable({
           {records.map((record, i) => (
             <tr
               key={record.id ?? i}
-              className={`border-b border-border/40 last:border-0 transition-colors hover:bg-muted/30 ${
-                isToday(record.date) ? 'bg-primary/5' : ''
-              }`}
+              className={`border-b border-border/40 last:border-0 transition-colors hover:bg-muted/30 ${isToday(record.date) ? 'bg-primary/5' : ''
+                }`}
             >
               {showEmployee && (
                 <td className="py-3 px-3">
@@ -398,10 +397,10 @@ function AllEmployeesView() {
   const q = searchQuery.trim().toLowerCase();
   const filteredRecords = q
     ? records.filter(r =>
-        r.employee_name?.toLowerCase().includes(q) ||
-        r.employee_email?.toLowerCase().includes(q) ||
-        r.employee_emp_id?.toLowerCase().includes(q)
-      )
+      r.employee_name?.toLowerCase().includes(q) ||
+      r.employee_email?.toLowerCase().includes(q) ||
+      r.employee_emp_id?.toLowerCase().includes(q)
+    )
     : records;
 
   return (
@@ -512,21 +511,19 @@ export default function AttendancePage() {
         <div className="flex gap-1 p-1 bg-secondary/60 rounded-xl w-fit">
           <button
             onClick={() => setTab('mine')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-              tab === 'mine'
-                ? 'bg-background shadow text-foreground'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${tab === 'mine'
+              ? 'bg-background shadow text-foreground'
+              : 'text-muted-foreground hover:text-foreground'
+              }`}
           >
             My Attendance
           </button>
           <button
             onClick={() => setTab('all')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
-              tab === 'all'
-                ? 'bg-background shadow text-foreground'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${tab === 'all'
+              ? 'bg-background shadow text-foreground'
+              : 'text-muted-foreground hover:text-foreground'
+              }`}
           >
             <Users className="w-4 h-4" />
             All Employees

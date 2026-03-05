@@ -5,15 +5,20 @@ import { ChevronLeft, ChevronRight, Star, Palmtree } from 'lucide-react';
 import { Button } from '../components/ui/button';
 
 interface CalendarEvent {
-  date: number;
+  date: Date;
   label: string;
-  type: 'holiday' | 'event' | 'weekend';
+  type: 'holiday' | 'event';
 }
 
 const holidays: CalendarEvent[] = [
-  { date: 1, label: 'New Month Kickoff', type: 'event' },
-  { date: 14, label: 'Valentine\'s Day', type: 'holiday' },
-  { date: 26, label: 'Republic Day', type: 'holiday' },
+  { date: new Date(2026, 0, 1), label: 'New Year', type: 'holiday' },
+  { date: new Date(2026, 0, 26), label: 'Republic Day', type: 'holiday' },
+  { date: new Date(2026, 1, 16), label: 'Mahashivratri', type: 'holiday' },
+  { date: new Date(2026, 2, 4), label: 'Holi', type: 'holiday' },
+  { date: new Date(2026, 7, 28), label: 'Raksha Bandhan', type: 'holiday' },
+  { date: new Date(2026, 9, 2), label: 'Gandhi Jayanthi', type: 'holiday' },
+  { date: new Date(2026, 9, 20), label: 'Dusshera', type: 'holiday' },
+  { date: new Date(2026, 10, 9), label: 'Post Diwali', type: 'holiday' },
 ];
 
 const typeColors = {
@@ -23,7 +28,7 @@ const typeColors = {
 };
 
 export default function CalendarPage() {
-  const [currentMonth, setCurrentMonth] = useState(1); // Feb 2026 (0-indexed)
+  const [currentMonth, setCurrentMonth] = useState(1);
   const [currentYear] = useState(2026);
 
   const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -40,7 +45,11 @@ export default function CalendarPage() {
     return d.getDay() === 0 || d.getDay() === 6;
   };
 
-  const getEvent = (day: number) => holidays.find((h) => h.date === day);
+  const getEvent = (day: number) => holidays.find((h) =>
+    h.date.getDate() === day &&
+    h.date.getMonth() === currentMonth &&
+    h.date.getFullYear() === currentYear
+  );
 
   return (
     <div className="space-y-6 animate-fade-up">
@@ -82,13 +91,12 @@ export default function CalendarPage() {
             return (
               <div
                 key={day}
-                className={`relative p-2 rounded-lg text-center text-sm min-h-[60px] transition-colors ${
-                  isToday
-                    ? 'bg-primary text-primary-foreground font-bold ring-2 ring-primary/30'
-                    : weekend
+                className={`relative p-2 rounded-lg text-center text-sm min-h-[60px] transition-colors ${isToday
+                  ? 'bg-primary text-primary-foreground font-bold ring-2 ring-primary/30'
+                  : weekend
                     ? 'bg-muted/50 text-muted-foreground'
                     : 'hover:bg-muted/30'
-                }`}
+                  }`}
               >
                 {day}
                 {event && (
@@ -117,7 +125,7 @@ export default function CalendarPage() {
               <div>
                 <p className="text-sm font-medium">{h.label}</p>
                 <p className="text-xs text-muted-foreground">
-                  {monthNames[currentMonth]} {h.date}, {currentYear}
+                  {monthNames[h.date.getMonth()]} {h.date.getDate()}, {h.date.getFullYear()}
                 </p>
               </div>
             </div>
