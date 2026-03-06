@@ -3,6 +3,7 @@
 import { ReactNode, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '../context/AuthContext';
+import { NotificationProvider } from '../context/NotificationContext';
 import AppSidebar from './AppSidebar';
 import { Loader2, Menu } from 'lucide-react';
 import { useState } from 'react';
@@ -46,31 +47,33 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="flex min-h-screen bg-background">
-      <AppSidebar
-        mobileMenuOpen={mobileMenuOpen}
-        setMobileMenuOpen={setMobileMenuOpen}
-      />
+    <NotificationProvider>
+      <div className="flex min-h-screen bg-background">
+        <AppSidebar
+          mobileMenuOpen={mobileMenuOpen}
+          setMobileMenuOpen={setMobileMenuOpen}
+        />
 
-      <main className="flex-1 min-h-screen overflow-y-auto">
-        {/* Mobile Header */}
-        <div className="md:hidden flex items-center justify-between p-4 bg-sidebar-background sticky top-0 z-30">
-          <button
-            onClick={() => setMobileMenuOpen(true)}
-            className="p-2 text-muted-foreground hover:text-foreground"
-          >
-            <Menu className="w-6 h-6" />
-          </button>
-          <div className='flex gap-2 items-center'>
-            <div className="w-7 h-7 rounded-full bg-sidebar-primary flex items-center justify-center text-sidebar-primary-foreground font-bold text-xs">
-              {user?.name?.charAt(0) || 'U'}
+        <main className="flex-1 min-h-screen overflow-y-auto">
+          {/* Mobile Header */}
+          <div className="md:hidden flex items-center justify-between p-4 bg-sidebar-background sticky top-0 z-30">
+            <button
+              onClick={() => setMobileMenuOpen(true)}
+              className="p-2 text-muted-foreground hover:text-foreground"
+            >
+              <Menu className="w-6 h-6" />
+            </button>
+            <div className='flex gap-2 items-center'>
+              <div className="w-7 h-7 rounded-full bg-sidebar-primary flex items-center justify-center text-sidebar-primary-foreground font-bold text-xs">
+                {user?.name?.charAt(0) || 'U'}
+              </div>
+              <p className='text-sm font-medium text-sidebar-foreground truncate'>{user?.name}</p>
             </div>
-            <p className='text-sm font-medium text-sidebar-foreground truncate'>{user?.name}</p>
           </div>
-        </div>
 
-        <div className="p-6 lg:p-8 max-w-7xl mx-auto">{children}</div>
-      </main>
-    </div>
+          <div className="p-6 lg:p-8 max-w-7xl mx-auto">{children}</div>
+        </main>
+      </div>
+    </NotificationProvider>
   );
 }

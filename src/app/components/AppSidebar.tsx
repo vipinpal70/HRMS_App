@@ -160,7 +160,7 @@ export default function AppSidebar({
                   </div>
 
                   <div className="px-4 py-2 pt-1">
-                    <NotificationBell showFullList={false} />
+                    <NotificationBell />
                   </div>
 
                   <div className="h-px bg-border my-1" />
