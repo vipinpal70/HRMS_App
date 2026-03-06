@@ -377,7 +377,7 @@ export async function getAttendanceHistory(userId?: string) {
       if (profile?.role !== 'admin' && profile?.role !== 'hr') {
         query = query.eq('user_id', user.id);
       }
-      // else: fetch all (no filter)
+      // else: fetch all
     } else if (userId) {
       // Specific user (admin/hr can view anyone, others only self)
       const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
@@ -401,7 +401,8 @@ export async function getAttendanceHistory(userId?: string) {
       employee_email: (record.profiles as any)?.email || '',
       check_in: record.check_in ? formatTime(record.check_in) : '--',
       check_out: record.check_out ? formatTime(record.check_out) : '--',
-      total_minutes: record.total_minutes ? `${Math.floor(record.total_minutes / 60)}h ${record.total_minutes % 60}m` : '--',
+      hours_display: record.total_minutes ? `${Math.floor(record.total_minutes / 60)}h ${record.total_minutes % 60}m` : '--',
+      total_minutes: record.total_minutes ?? 0,
       ipValid: true,
       locationValid: true
     }));

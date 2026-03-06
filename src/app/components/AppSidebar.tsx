@@ -14,12 +14,15 @@ import {
   LogOut,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
+  User,
   Shield,
   Users,
   Sun,
   Moon,
   Menu,
-  X
+  X,
+  Bell
 } from 'lucide-react';
 import NotificationBell from './NotificationBell';
 import { getCompanySettings } from '@/app/actions/settings';
@@ -50,6 +53,7 @@ export default function AppSidebar({
   const { user, logout } = useAuth();
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -126,60 +130,93 @@ export default function AppSidebar({
         </nav>
 
         <div className="px-3 py-3 border-t border-sidebar-border">
+          <div className="flex items-center justify-start gap-2 px-2 py-2 border-sidebar-border relative">
+            {/* User Menu Popup */}
+            {userMenuOpen && (
+              <div className="absolute bottom-full left-3 right-3 mb-2 bg-popover text-popover-foreground rounded-xl shadow-xl border border-border overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-200 z-[60]">
+                <div className="py-2">
+                  <button
+                    onClick={() => {
+                      window.location.href = '/settings';
+                      setUserMenuOpen(false);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-accent transition-colors"
+                  >
+                    <User className="w-4 h-4 text-muted-foreground" />
+                    <span>My Profile</span>
+                  </button>
 
-          {/* User */}
-          <div className="flex items-center gap-3 px-1 mb-2 relative">
-            <div className="w-8 h-8 rounded-full bg-sidebar-accent flex items-center justify-center text-sidebar-accent-foreground text-xs font-semibold">
-              {user?.name?.charAt(0)}
-            </div>
-            {!collapsed && (
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-sidebar-foreground truncate">
-                  {user?.name || user?.email?.split('@')[0] || 'User'}
-                </p>
-                <p className="text-[11px] text-muted-foreground flex items-center gap-1 text-amber-400">
-                  <Shield className="w-3 h-3" />
-                  {user?.role}
-                </p>
+                  <div className="flex items-center justify-between px-4 py-2.5 text-sm hover:bg-accent transition-colors cursor-pointer"
+                    onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                  >
+                    <div className="flex items-center gap-3">
+                      {theme === 'dark' ? (
+                        <Sun className="w-4 h-4 text-muted-foreground" />
+                      ) : (
+                        <Moon className="w-4 h-4 text-muted-foreground" />
+                      )}
+                      <span>{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
+                    </div>
+                  </div>
+
+                  <div className="px-4 py-2 pt-1">
+                    <NotificationBell showFullList={false} />
+                  </div>
+
+                  <div className="h-px bg-border my-1" />
+
+                  <button
+                    onClick={logout}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-500 hover:bg-red-500/10 transition-colors"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    <span>Sign out</span>
+                  </button>
+                </div>
               </div>
             )}
-          </div>
 
-          <div className="flex flex-col gap-2 mt-2">
-            <div className={`flex items-center gap-2 ${collapsed ? 'flex-col items-center' : 'justify-evenly'}`}>
-              {/* Collapse Button */}
-              <button
-                onClick={() => setCollapsed(!collapsed)}
-                className="sidebar-item sidebar-item-inactive p-2"
-                title={collapsed ? "Expand Sidebar" : "Collapse Sidebar"}
-              >
-                {collapsed ? <ChevronRight className="w-5 h-5 text-gray-200" /> : <ChevronLeft className="w-5 h-5 text-gray-200" />}
-              </button>
+            {/* User Profile Card */}
+            <button
+              onClick={() => setUserMenuOpen(!userMenuOpen)}
+              className={`w-full flex items-center gap-3 p-2 rounded-xl transition-all duration-200 bg-sidebar-accent 
+              ${userMenuOpen ? 'bg-black/20 shadow-sm' : 'hover:bg-black/20'}
+              ${collapsed ? 'justify-center' : ''}
+              group relative
+            `}
+            >
+              <div className="w-9 h-9 rounded-xl bg-sidebar-primary text-sidebar-primary-foreground flex items-center justify-center text-sm font-bold shrink-0 shadow-sm">
+                {user?.name?.charAt(0) || user?.email?.charAt(0)}
+              </div>
 
-              {/* Theme Toggle */}
-              {mounted && (
-                <button
-                  onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-                  className="sidebar-item sidebar-item-inactive p-2"
-                  title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-                >
-                  {theme === 'dark' ? <Sun className="w-5 h-5 text-gray-200" /> : <Moon className="w-5 h-5 text-gray-200" />}
-                </button>
+              {!collapsed && (
+                <>
+                  <div className="flex-1 min-w-0 text-left">
+                    <p className="text-sm font-semibold text-sidebar-foreground truncate">
+                      {user?.name || user?.email?.split('@')[0] || 'User'}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground truncate uppercase tracking-wider font-medium opacity-70">
+                      {user?.role}
+                    </p>
+                  </div>
+                  <ChevronUp className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${userMenuOpen ? 'rotate-180' : ''}`} />
+                </>
               )}
 
-              {/* Notification Bell */}
-              <div className="sidebar-item p-0 flex items-center justify-center">
-                <NotificationBell />
-              </div>
-            </div>
+              {collapsed && (
+                <div className="absolute left-full ml-2 px-2 py-1 bg-popover text-popover-foreground text-xs rounded shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-50">
+                  {user?.name || user?.email?.split('@')[0]}
+                </div>
+              )}
+            </button>
 
+            {/* Sidebar Collapse Toggle - Mini style */}
             <button
-              onClick={logout}
-              className={`sidebar-item sidebar-item-inactive ${collapsed ? 'justify-center' : ''}`}
-              title={collapsed ? "Logout" : undefined}
+              onClick={() => setCollapsed(!collapsed)}
+              className="bg-sidebar-accent rounded-full p-1 shadow-sm hover:bg-black/20"
+              title={collapsed ? "Expand" : "Collapse"}
             >
-              <LogOut className="w-5 h-5 text-red-500" />
-              {!collapsed && <span className='text-red-500'>Logout</span>}
+              {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
             </button>
           </div>
         </div>
