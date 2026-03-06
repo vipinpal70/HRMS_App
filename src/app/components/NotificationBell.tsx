@@ -5,6 +5,7 @@ import { Bell, CheckCheck, FileText, ListTodo, Clock, Megaphone, Info, Trash2 } 
 import { useRouter } from 'next/navigation';
 import { useNotificationContext } from '../context/NotificationContext';
 import { formatDistanceToNow } from 'date-fns';
+import { formatTime } from '@/lib/time';
 
 // ─── Category → Icon mapping ───────────────────────────────
 const CATEGORY_ICONS: Record<string, React.ElementType> = {
@@ -25,7 +26,11 @@ const TYPE_STYLES: Record<string, string> = {
   info: 'bg-blue-500/15 text-blue-600',
 };
 
-export default function NotificationBell() {
+interface NotificationBellProps {
+  showFullList?: boolean;
+}
+
+export default function NotificationBell({ showFullList = true }: NotificationBellProps) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
@@ -71,7 +76,7 @@ export default function NotificationBell() {
               <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full" />
             )}
           </div>
-          <span>Notifications</span>
+          <span className="text-sm">Notifications</span>
         </div>
         {unreadCount > 0 && (
           <span className="bg-primary/10 text-primary text-[10px] font-bold px-1.5 py-0.5 rounded-full">
@@ -90,12 +95,7 @@ export default function NotificationBell() {
                 <button
                   onClick={async (e) => {
                     e.stopPropagation();
-                    const { data: { user } } = await supabase.auth.getUser();
-                    if (user) {
-                      await supabase.from('notifications').update({ is_read: true }).eq('user_id', user.id);
-                      setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
-                      setUnreadCount(0);
-                    }
+                    await markAllAsRead();
                   }}
                   className="text-[10px] uppercase tracking-wider font-bold text-primary hover:text-primary/80"
                 >
@@ -113,7 +113,7 @@ export default function NotificationBell() {
                   <div
                     key={n.id}
                     onClick={(e) => { e.stopPropagation(); handleNotificationClick(n) }}
-                    className={`p-4 border-b border-border/40 last:border-0 hover:bg-accent/50 cursor-pointer transition-colors ${!n.is_read ? 'bg-primary/5' : ''
+                    className={`p-4 border-b border-border/40 last:border-0 cursor-pointer transition-colors ${!n.is_read ? 'bg-primary/5' : ''
                       }`}
                   >
                     <div className="flex justify-between items-start gap-2">
@@ -162,12 +162,7 @@ export default function NotificationBell() {
             {unreadCount > 0 && (
               <button
                 onClick={async () => {
-                  const { data: { user } } = await supabase.auth.getUser();
-                  if (user) {
-                    await supabase.from('notifications').update({ is_read: true }).eq('user_id', user.id);
-                    setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
-                    setUnreadCount(0);
-                  }
+                  await markAllAsRead();
                 }}
                 className="text-xs text-primary hover:underline"
               >

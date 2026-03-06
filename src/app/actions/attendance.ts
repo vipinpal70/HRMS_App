@@ -6,10 +6,10 @@ import { revalidatePath } from 'next/cache';
 import { format } from 'date-fns-tz';
 import { ORG_TIMEZONE } from '@/lib/time';
 
-// Mock Office Location (e.g., New Delhi)
-const OFFICE_LAT = 28.6139;
-const OFFICE_LON = 77.2090;
-const MAX_DISTANCE_KM = 0.5; // 500 meters
+// Default Office Location (Fallback if not in settings)
+const DEFAULT_OFFICE_LAT = 28.6139;
+const DEFAULT_OFFICE_LON = 77.2090;
+const DEFAULT_RADIUS_METERS = 500;
 
 function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
   const R = 6371; // Radius of the earth in km
@@ -52,15 +52,18 @@ function isWithinOfficeHours(now: Date, startTime: string, endTime: string): boo
   return currentMinutes >= startMinutes && currentMinutes <= endMinutes;
 }
 
-// Helper: fetch office hours from company_settings
-async function getOfficeHours(supabase: any): Promise<{ start: string; end: string }> {
+// Helper: fetch settings from company_settings
+async function getSettings(supabase: any) {
   const { data } = await supabase
     .from('company_settings')
-    .select('office_start_time, office_end_time')
+    .select('office_start_time, office_end_time, office_lat, office_lng, allowed_radius_meters')
     .single();
   return {
     start: data?.office_start_time ?? '09:00',
-    end: data?.office_end_time ?? '19:00'
+    end: data?.office_end_time ?? '19:00',
+    office_lat: data?.office_lat ?? DEFAULT_OFFICE_LAT,
+    office_lng: data?.office_lng ?? DEFAULT_OFFICE_LON,
+    allowed_radius_meters: data?.allowed_radius_meters ?? DEFAULT_RADIUS_METERS
   };
 }
 
@@ -73,19 +76,19 @@ export async function checkIn(latitude: number, longitude: number) {
       return { error: 'Unauthorized' };
     }
 
-    // 0. Validate Office Hours
-    const officeHours = await getOfficeHours(supabase);
+    // 0. Validate Office Hours & Get Location
+    const settings = await getSettings(supabase);
     const now = getOrgTime();
-    if (!isWithinOfficeHours(now, officeHours.start, officeHours.end)) {
-      return { error: `Check-in is only allowed between ${formatTimeDisplay(officeHours.start)} and ${formatTimeDisplay(officeHours.end)}.` };
+    if (!isWithinOfficeHours(now, settings.start, settings.end)) {
+      return { error: `Check-in is only allowed between ${formatTimeDisplay(settings.start)} and ${formatTimeDisplay(settings.end)}.` };
     }
 
-    // 1. Validate Location
-    const distance = calculateDistance(latitude, longitude, OFFICE_LAT, OFFICE_LON);
-    // For development, we might skip this or make it lenient
-    // if (distance > MAX_DISTANCE_KM) {
-    //   return { error: `You are too far from the office (${distance.toFixed(2)} km away).` };
-    // }
+    // 1. Determine Work Type (GPS based)
+    const distanceKm = calculateDistance(latitude, longitude, settings.office_lat, settings.office_lng);
+    const distanceMeters = distanceKm * 1000;
+
+    // If user is outside the allowed radius, mark as WFH
+    const workType = distanceMeters <= settings.allowed_radius_meters ? 'office' : 'wfh';
 
     const today = getOrgDateString();
 
@@ -103,7 +106,7 @@ export async function checkIn(latitude: number, longitude: number) {
 
     // 3. Determine status (Late vs On Time)
     // Late = after office_start_time + 1 hour
-    const startParsed = parseTimeString(officeHours.start);
+    const startParsed = parseTimeString(settings.start);
     const lateThresholdMinutes = (startParsed.hours + 1) * 60 + startParsed.minutes;
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
@@ -118,7 +121,7 @@ export async function checkIn(latitude: number, longitude: number) {
       date: today,
       check_in: new Date().toISOString(), // Store as UTC ISO
       status: status,
-      work_type: 'office', // Default, could be 'wfh' based on request
+      work_type: workType,
       location_lat: latitude,
       location_lng: longitude
     });
@@ -143,10 +146,10 @@ export async function checkOut(latitude: number, longitude: number) {
     }
 
     // 0. Validate Office Hours
-    const officeHours = await getOfficeHours(supabase);
+    const settings = await getSettings(supabase);
     const now = getOrgTime();
-    if (!isWithinOfficeHours(now, officeHours.start, officeHours.end)) {
-      return { error: `Check-out is only allowed between ${formatTimeDisplay(officeHours.start)} and ${formatTimeDisplay(officeHours.end)}.` };
+    if (!isWithinOfficeHours(now, settings.start, settings.end)) {
+      return { error: `Check-out is only allowed between ${formatTimeDisplay(settings.start)} and ${formatTimeDisplay(settings.end)}.` };
     }
 
     const today = getOrgDateString();
