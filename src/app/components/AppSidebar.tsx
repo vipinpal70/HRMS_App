@@ -90,7 +90,7 @@ export default function AppSidebar({
         `}
       >
         {/* Logo & Mobile Close */}
-        <div className="flex items-center justify-between px-4 py-5 border-b border-sidebar-border">
+        <div className={`px-4 py-5 border-b border-sidebar-border ${collapsed ? 'w-[68px]' : 'w-[250px]'}`}>
           <div className="flex items-center gap-3">
             <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-sidebar-primary text-sidebar-primary-foreground font-bold text-sm">
               {settings?.organization_name?.charAt(0)}
@@ -130,23 +130,31 @@ export default function AppSidebar({
         </nav>
 
         <div className="px-3 py-3 border-t border-sidebar-border">
-          <div className="flex items-center justify-start gap-2 px-2 py-2 border-sidebar-border relative">
+          <div className="flex flex-col items-center justify-start gap-2 px-2 py-2 border-sidebar-border relative">
             {/* User Menu Popup */}
             {userMenuOpen && (
-              <div className="absolute bottom-full left-3 right-3 mb-2 bg-popover text-popover-foreground rounded-xl shadow-xl border border-border overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-200 z-[60]">
+              <div className={`absolute mb-2 bg-popover text-popover-foreground rounded-xl shadow-2xl border border-border overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-200 z-[60]
+                ${collapsed ? 'left-[72px] bottom-0 w-64' : 'bottom-full left-3 right-3'}
+              `}>
                 <div className="py-2">
                   <button
                     onClick={() => {
-                      window.location.href = '/settings';
+                      if (user?.id) {
+                        window.location.href = `/profile/${user.id}`;
+                      }
                       setUserMenuOpen(false);
                     }}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-accent transition-colors"
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-muted transition-colors text-left"
                   >
                     <User className="w-4 h-4 text-muted-foreground" />
                     <span>My Profile</span>
                   </button>
 
-                  <div className="flex items-center justify-between px-4 py-2.5 text-sm hover:bg-accent transition-colors cursor-pointer"
+                  <div className="px-4 py-2 hover:bg-muted transition-colors cursor-pointer">
+                    <NotificationBell showFullList={false} />
+                  </div>
+
+                  <div className="flex items-center justify-between px-4 py-2.5 text-sm hover:bg-muted transition-colors cursor-pointer"
                     onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
                   >
                     <div className="flex items-center gap-3">
@@ -159,15 +167,11 @@ export default function AppSidebar({
                     </div>
                   </div>
 
-                  <div className="px-4 py-2 pt-1">
-                    <NotificationBell showFullList={false} />
-                  </div>
-
-                  <div className="h-px bg-border my-1" />
+                  <div className="h-px bg-border/50 my-1" />
 
                   <button
                     onClick={logout}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-500 hover:bg-red-500/10 transition-colors"
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-500 hover:bg-red-500/10 transition-colors text-left"
                   >
                     <LogOut className="w-4 h-4" />
                     <span>Sign out</span>
@@ -185,7 +189,7 @@ export default function AppSidebar({
               group relative
             `}
             >
-              <div className="w-9 h-9 rounded-xl bg-sidebar-primary text-sidebar-primary-foreground flex items-center justify-center text-sm font-bold shrink-0 shadow-sm">
+              <div className="w-9 h-9 rounded-xl bg-white/80 dark:bg-white text-sidebar-accent flex items-center justify-center text-sm font-extrabold shrink-0 shadow-sm">
                 {user?.name?.charAt(0) || user?.email?.charAt(0)}
               </div>
 
@@ -195,7 +199,13 @@ export default function AppSidebar({
                     <p className="text-sm font-semibold text-sidebar-foreground truncate">
                       {user?.name || user?.email?.split('@')[0] || 'User'}
                     </p>
-                    <p className="text-[11px] text-muted-foreground truncate uppercase tracking-wider font-medium opacity-70">
+                    <p className="text-[10px] text-white/60 truncate font-medium">
+                      {user?.designation}
+                    </p>
+                    <p className="text-[10px] text-blue-500 truncate font-medium">
+                      {user?.email}
+                    </p>
+                    <p className="text-[10px] text-amber-600 truncate font-medium">
                       {user?.role}
                     </p>
                   </div>
@@ -209,16 +219,16 @@ export default function AppSidebar({
                 </div>
               )}
             </button>
-
-            {/* Sidebar Collapse Toggle - Mini style */}
-            <button
-              onClick={() => setCollapsed(!collapsed)}
-              className="bg-sidebar-accent rounded-full p-1 shadow-sm hover:bg-black/20"
-              title={collapsed ? "Expand" : "Collapse"}
-            >
-              {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
-            </button>
           </div>
+
+          {/* Sidebar Collapse Toggle */}
+          <button
+            onClick={() => setCollapsed(!collapsed)}
+            className="absolute right-1 top-1/2 -translate-y-1/2 bg-sidebar-accent border border-sidebar-border rounded-full p-1 shadow-md hover:bg-sidebar-accent transition-all duration-200 z-[70] hover:scale-110 active:scale-95"
+            title={collapsed ? "Expand" : "Collapse"}
+          >
+            {collapsed ? <ChevronRight className="w-5 h-5 text-amber-600" /> : <ChevronLeft className="w-5 h-5 text-amber-600" />}
+          </button>
         </div>
       </aside >
     </>

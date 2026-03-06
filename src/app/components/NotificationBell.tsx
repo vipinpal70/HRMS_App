@@ -86,14 +86,14 @@ export default function NotificationBell({ showFullList = true }: { showFullList
   if (!showFullList) {
     return (
       <div className="flex items-center justify-between w-full cursor-pointer group" onClick={() => setIsOpen(!isOpen)}>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 ">
           <div className="relative">
             <Bell className="w-4 h-4 text-muted-foreground" />
             {unreadCount > 0 && (
               <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full" />
             )}
           </div>
-          <span>Notifications</span>
+          <span className="text-sm">Notifications</span>
         </div>
         {unreadCount > 0 && (
           <span className="bg-primary/10 text-primary text-[10px] font-bold px-1.5 py-0.5 rounded-full">
@@ -108,22 +108,38 @@ export default function NotificationBell({ showFullList = true }: { showFullList
                 <Bell className="w-4 h-4 text-primary" />
                 Notifications
               </span>
-              {unreadCount > 0 && (
+              <div className="flex items-center gap-3">
+                {unreadCount > 0 && (
+                  <button
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      const { data: { user } } = await supabase.auth.getUser();
+                      if (user) {
+                        await supabase.from('notifications').update({ is_read: true }).eq('user_id', user.id);
+                        setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+                        setUnreadCount(0);
+                      }
+                    }}
+                    className="text-[10px] font-semibold text-primary hover:text-primary/80"
+                  >
+                    Mark all read
+                  </button>
+                )}
                 <button
                   onClick={async (e) => {
                     e.stopPropagation();
                     const { data: { user } } = await supabase.auth.getUser();
                     if (user) {
-                      await supabase.from('notifications').update({ is_read: true }).eq('user_id', user.id);
-                      setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+                      await supabase.from('notifications').delete().eq('user_id', user.id);
+                      setNotifications([]);
                       setUnreadCount(0);
                     }
                   }}
-                  className="text-[10px] uppercase tracking-wider font-bold text-primary hover:text-primary/80"
+                  className="text-[10px] font-semibold text-red-500 hover:text-red-500"
                 >
-                  Clear All
+                  Clear
                 </button>
-              )}
+              </div>
             </div>
             <div className="max-h-[300px] overflow-y-auto">
               {notifications.length === 0 ? (
@@ -135,7 +151,7 @@ export default function NotificationBell({ showFullList = true }: { showFullList
                   <div
                     key={n.id}
                     onClick={(e) => { e.stopPropagation(); handleNotificationClick(n) }}
-                    className={`p-4 border-b border-border/40 last:border-0 hover:bg-accent/50 cursor-pointer transition-colors ${!n.is_read ? 'bg-primary/5' : ''
+                    className={`p-4 border-b border-border/40 last:border-0 cursor-pointer transition-colors ${!n.is_read ? 'bg-primary/5' : ''
                       }`}
                   >
                     <div className="flex justify-between items-start gap-2">
@@ -174,21 +190,36 @@ export default function NotificationBell({ showFullList = true }: { showFullList
         <div className="absolute -right-10 md:right-auto md:left-0 bottom-12 mb-2 w-[250px] sm:w-80 bg-background border border-border rounded-lg shadow-lg z-50 overflow-hidden">
           <div className="p-3 border-b border-border font-semibold text-xs md:text-sm flex justify-between items-center">
             <span>Notifications</span>
-            {unreadCount > 0 && (
+            <div className="flex items-center gap-3">
+              {unreadCount > 0 && (
+                <button
+                  onClick={async () => {
+                    const { data: { user } } = await supabase.auth.getUser();
+                    if (user) {
+                      await supabase.from('notifications').update({ is_read: true }).eq('user_id', user.id);
+                      setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+                      setUnreadCount(0);
+                    }
+                  }}
+                  className="text-[10px] text-primary hover:underline"
+                >
+                  Mark all read
+                </button>
+              )}
               <button
                 onClick={async () => {
                   const { data: { user } } = await supabase.auth.getUser();
                   if (user) {
-                    await supabase.from('notifications').update({ is_read: true }).eq('user_id', user.id);
-                    setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+                    await supabase.from('notifications').delete().eq('user_id', user.id);
+                    setNotifications([]);
                     setUnreadCount(0);
                   }
                 }}
-                className="text-xs text-primary hover:underline"
+                className="text-[10px] text-muted-foreground hover:underline"
               >
-                Mark all read
+                Clear
               </button>
-            )}
+            </div>
           </div>
           <div className="max-h-[300px] overflow-y-auto">
             {notifications.length === 0 ? (
