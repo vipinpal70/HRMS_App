@@ -6,7 +6,7 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Textarea } from '../components/ui/textarea';
 import { Badge } from '../components/ui/badge';
-import { Calendar, Send, CheckCircle2, XCircle, Clock, Search, Users } from 'lucide-react';
+import { Calendar, Send, CheckCircle2, XCircle, Clock, Search, Users, AlertTriangle } from 'lucide-react';
 import { getLeaveRequests, createLeaveRequest, updateLeaveStatus } from '../actions/leave';
 import { toast } from 'sonner';
 
@@ -64,7 +64,7 @@ export default function LeavePage() {
 
   const handleSubmit = async () => {
     if (!form.startDate || !form.reason) return;
-    
+
     const formData = new FormData();
     formData.append('type', form.type);
     formData.append('start_date', form.startDate);
@@ -72,7 +72,7 @@ export default function LeavePage() {
     formData.append('reason', form.reason);
 
     const result = await createLeaveRequest(formData);
-    
+
     if (result.success) {
       toast.success(result.message);
       setForm({ type: 'full-day', startDate: '', endDate: '', reason: '' });
@@ -86,7 +86,7 @@ export default function LeavePage() {
   const handleApproval = async (id: string, status: LeaveStatus) => {
     // Only allow 'approved' or 'rejected'
     if (status === 'pending') return;
-    
+
     const result = await updateLeaveStatus(id, status);
     if (result.success) {
       toast.success(result.message);
@@ -97,11 +97,21 @@ export default function LeavePage() {
   };
 
   const filteredRequests = requests.filter((r) => {
-    const matchesSearch = !isAdmin || !searchQuery || 
-      (r.user_name?.toLowerCase().includes(searchQuery.toLowerCase()) || 
-       r.user_email?.toLowerCase().includes(searchQuery.toLowerCase()));
+    const matchesSearch = !isAdmin || !searchQuery ||
+      (r.user_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        r.user_email?.toLowerCase().includes(searchQuery.toLowerCase()));
     return matchesSearch;
   });
+
+  // Detect overlapping date ranges: find date keys that appear more than once
+  const dateKeyCount: Record<string, number> = {};
+  requests.forEach((r) => {
+    const key = `${r.start_date}__${r.end_date || r.start_date}`;
+    dateKeyCount[key] = (dateKeyCount[key] || 0) + 1;
+  });
+  const overlappingKeys = new Set(
+    Object.entries(dateKeyCount).filter(([, count]) => count > 1).map(([key]) => key)
+  );
 
   return (
     <div className="space-y-6 animate-fade-up">
@@ -112,25 +122,25 @@ export default function LeavePage() {
             {isAdmin ? 'Manage team leave requests' : 'Request time off or work from home'}
           </p>
         </div>
-        
+
         <div className="flex gap-2 w-full sm:w-auto">
-            {isAdmin && (
-                <div className="relative flex-1 sm:w-64">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input 
-                    placeholder="Search by name or email..." 
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-9"
-                  />
-                </div>
-            )}
-            
-            {!isAdmin && (
-              <Button onClick={() => setShowForm(!showForm)} className="bg-primary text-primary-foreground">
-                <Send className="w-4 h-4 mr-2" /> New Request
-              </Button>
-            )}
+          {isAdmin && (
+            <div className="relative flex-1 sm:w-64">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by name or email..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+          )}
+
+          {!isAdmin && (
+            <Button onClick={() => setShowForm(!showForm)} className="bg-primary text-primary-foreground">
+              <Send className="w-4 h-4 mr-2" /> New Request
+            </Button>
+          )}
         </div>
       </div>
 
@@ -143,11 +153,10 @@ export default function LeavePage() {
               <button
                 key={t}
                 onClick={() => setForm({ ...form, type: t })}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium capitalize transition-colors ${
-                  form.type === t
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium capitalize transition-colors ${form.type === t
                     ? 'bg-primary text-primary-foreground'
                     : 'bg-secondary text-secondary-foreground'
-                }`}
+                  }`}
               >
                 {t}
               </button>
@@ -177,40 +186,48 @@ export default function LeavePage() {
       {/* Requests */}
       <div className="space-y-3">
         {filteredRequests.length === 0 ? (
-            <div className="text-center py-10 text-muted-foreground bg-muted/20 rounded-lg">No requests found.</div>
+          <div className="text-center py-10 text-muted-foreground bg-muted/20 rounded-lg">No requests found.</div>
         ) : (
-        filteredRequests.map((req) => {
-          const StatusIcon = statusIcons[req.status];
-          return (
-            <div key={req.id} className="stat-card flex flex-col sm:flex-row sm:items-center gap-3">
-              <div className="flex-1 space-y-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className={`badge-status capitalize ${typeColors[req.type]}`}>{req.type}</span>
-                  <span className={`badge-status capitalize ${statusColors[req.status]}`}>
-                    <StatusIcon className="w-3 h-3 mr-1" />
-                    {req.status}
-                  </span>
-                  {isAdmin && <span className="text-xs text-muted-foreground bg-secondary px-2 py-0.5 rounded">by {req.user_name}</span>}
+          filteredRequests.map((req) => {
+            const StatusIcon = statusIcons[req.status];
+            return (
+              <div key={req.id} className={`stat-card flex flex-col sm:flex-row sm:items-center gap-3 ${isAdmin && overlappingKeys.has(`${req.start_date}__${req.end_date || req.start_date}`)
+                  ? 'border-l-4 border-l-amber-500'
+                  : ''
+                }`}>
+                <div className="flex-1 space-y-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className={`badge-status capitalize ${typeColors[req.type]}`}>{req.type}</span>
+                    <span className={`badge-status capitalize ${statusColors[req.status]}`}>
+                      <StatusIcon className="w-3 h-3 mr-1" />
+                      {req.status}
+                    </span>
+                    {isAdmin && <span className="text-xs text-muted-foreground bg-secondary px-2 py-0.5 rounded">by {req.user_name}</span>}
+                    {isAdmin && overlappingKeys.has(`${req.start_date}__${req.end_date || req.start_date}`) && (
+                      <span className="flex items-center gap-1 text-xs font-medium text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded">
+                        <AlertTriangle className="w-3 h-3" /> Overlapping
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-sm">{req.reason}</p>
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Calendar className="w-3 h-3" />
+                    {req.start_date} {req.end_date !== req.start_date && `→ ${req.end_date}`}
+                  </p>
                 </div>
-                <p className="text-sm">{req.reason}</p>
-                <p className="text-xs text-muted-foreground flex items-center gap-1">
-                  <Calendar className="w-3 h-3" />
-                  {req.start_date} {req.end_date !== req.start_date && `→ ${req.end_date}`}
-                </p>
+                {isAdmin && req.status === 'pending' && (
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={() => handleApproval(req.id, 'approved')} className="bg-success text-success-foreground hover:bg-success/90">
+                      Approve
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => handleApproval(req.id, 'rejected')} className="border-destructive text-destructive hover:bg-destructive/10">
+                      Reject
+                    </Button>
+                  </div>
+                )}
               </div>
-              {isAdmin && req.status === 'pending' && (
-                <div className="flex gap-2">
-                  <Button size="sm" onClick={() => handleApproval(req.id, 'approved')} className="bg-success text-success-foreground hover:bg-success/90">
-                    Approve
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => handleApproval(req.id, 'rejected')} className="border-destructive text-destructive hover:bg-destructive/10">
-                    Reject
-                  </Button>
-                </div>
-              )}
-            </div>
-          );
-        })
+            );
+          })
         )}
       </div>
     </div>

@@ -272,3 +272,129 @@ export async function getEmployeesList() {
     return [];
   }
 }
+
+/**
+ * Allows an employee to create a task for themselves.
+ * Notifies all admins/HR that an employee added their own task.
+ */
+export async function createSelfTask(formData: FormData) {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) return { error: 'Unauthorized' };
+
+    // Fetch the employee's profile (name for notification message)
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('name, email, role')
+      .eq('id', user.id)
+      .single();
+
+    const title = formData.get('title') as string;
+    const description = formData.get('description') as string;
+    const priority = (formData.get('priority') as string) || 'medium';
+    const start_day = (formData.get('start_day') as string) || new Date().toISOString().split('T')[0];
+    const end_day = (formData.get('end_day') as string) || start_day;
+
+    if (!title) return { error: 'Task title is required.' };
+
+    // Insert the task assigned to themselves
+    const { error: insertError } = await supabase.from('tasks').insert({
+      title,
+      description,
+      assigned_to: user.id,
+      priority,
+      created_by: user.id,
+      start_day,
+      end_day,
+      status: 'pending',
+    });
+
+    if (insertError) throw insertError;
+
+    // Notify all admins and HR
+    const { data: admins } = await supabase
+      .from('profiles')
+      .select('id')
+      .in('role', ['admin']);
+
+    if (admins && admins.length > 0) {
+      const empName = profile?.name || profile?.email || 'An employee';
+      const notifications = admins.map((admin) => ({
+        user_id: admin.id,
+        title: 'New Self-Assigned Task',
+        message: `${empName} added a new task for themselves: "${title}"`,
+        is_read: false,
+      }));
+      await supabase.from('notifications').insert(notifications);
+    }
+
+    revalidatePath('/tasks');
+    return { success: true, message: 'Task added successfully.' };
+  } catch (error: any) {
+    console.error('createSelfTask error:', error);
+    return { error: error.message };
+  }
+}
+
+/**
+ * Checks employees who have no tasks for today after 11 AM.
+ * Sends a reminder notification to those employees.
+ * Safe to call on every page load — guards against duplicate notifications.
+ */
+export async function checkAndNotifyNoTasks() {
+  try {
+    const now = new Date();
+    // Only run at or after 11:00 AM
+    if (now.getHours() < 11) return { skipped: true };
+
+    const supabase = await createClient();
+    const today = now.toISOString().split('T')[0];
+    const NOTIF_TITLE = 'No Tasks Added';
+
+    // Fetch all employees
+    const { data: employees } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('role', 'emp');
+
+    if (!employees || employees.length === 0) return { success: true };
+
+    for (const emp of employees) {
+      // Check if they already have a task for today
+      const { count: taskCount } = await supabase
+        .from('tasks')
+        .select('*', { count: 'exact', head: true })
+        .eq('assigned_to', emp.id)
+        .eq('start_day', today);
+
+      if ((taskCount ?? 0) > 0) continue; // Has tasks, skip
+
+      // Check if already notified today (dedup)
+      const startOfDay = `${today}T00:00:00.000Z`;
+      const { count: existingNotif } = await supabase
+        .from('notifications')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', emp.id)
+        .eq('title', NOTIF_TITLE)
+        .gte('created_at', startOfDay);
+
+      if ((existingNotif ?? 0) > 0) continue; // Already notified today, skip
+
+      // Send notification
+      await supabase.from('notifications').insert({
+        user_id: emp.id,
+        title: NOTIF_TITLE,
+        message: "You haven't added any tasks yet today. Please update your task list.",
+        is_read: false,
+      });
+    }
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('checkAndNotifyNoTasks error:', error);
+    return { error: error.message };
+  }
+}
+

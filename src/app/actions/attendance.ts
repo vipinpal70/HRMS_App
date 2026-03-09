@@ -5,6 +5,7 @@ import { getOrgDateString, getOrgTime, formatTime } from '@/lib/time';
 import { revalidatePath } from 'next/cache';
 import { format } from 'date-fns-tz';
 import { ORG_TIMEZONE } from '@/lib/time';
+import { ensureMonthWeekends } from './calendar';
 
 // Default Office Location (Fallback if not in settings)
 const DEFAULT_OFFICE_LAT = 28.6139;
@@ -79,18 +80,33 @@ export async function checkIn(latitude: number, longitude: number) {
     // 0. Validate Office Hours & Get Location
     const settings = await getSettings(supabase);
     const now = getOrgTime();
+
+    // 0.1 Holiday Check
+    const today = getOrgDateString();
+    const { data: calendarDay } = await supabase
+      .from('company_calendar')
+      .select('type')
+      .eq('date', today)
+      .single();
+
+    if (calendarDay?.type === 'holiday') {
+      return { error: 'Not able to check-in on holiday' };
+    }
+
     if (!isWithinOfficeHours(now, settings.start, settings.end)) {
       return { error: `Check-in is only allowed between ${formatTimeDisplay(settings.start)} and ${formatTimeDisplay(settings.end)}.` };
     }
 
-    // 1. Determine Work Type (GPS based)
+    // 1. Determine Work Type (GPS/Weekend based)
     const distanceKm = calculateDistance(latitude, longitude, settings.office_lat, settings.office_lng);
     const distanceMeters = distanceKm * 1000;
 
-    // If user is outside the allowed radius, mark as WFH
-    const workType = distanceMeters <= settings.allowed_radius_meters ? 'office' : 'wfh';
+    // Determine if today is Saturday or Sunday
+    const dayOfWeek = now.getDay(); // 0 is Sunday, 6 is Saturday
+    const isWeekendByDay = (dayOfWeek === 0 || dayOfWeek === 6);
 
-    const today = getOrgDateString();
+    // If weekend, or user is outside the allowed radius, mark as WFH
+    const workType = (isWeekendByDay || distanceMeters > settings.allowed_radius_meters) ? 'wfh' : 'office';
 
     // 2. Check if already checked in
     const { data: existing } = await supabase
@@ -104,15 +120,17 @@ export async function checkIn(latitude: number, longitude: number) {
       return { error: 'Already checked in for today.' };
     }
 
-    // 3. Determine status (Late vs On Time)
-    // Late = after office_start_time + 1 hour
-    const startParsed = parseTimeString(settings.start);
-    const lateThresholdMinutes = (startParsed.hours + 1) * 60 + startParsed.minutes;
+    // 3. Determine status & Late calculation
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
+    // Threshold: 10:30 AM — anything after this is Late
+    const lateThreshold = 10 * 60 + 30;
+    let lateByMinutes = 0;
     let status = 'present';
-    if (currentMinutes > lateThresholdMinutes) {
+
+    if (currentMinutes > lateThreshold) {
       status = 'late';
+      lateByMinutes = currentMinutes - lateThreshold;
     }
 
     // 4. Insert Record
@@ -121,6 +139,8 @@ export async function checkIn(latitude: number, longitude: number) {
       date: today,
       check_in: new Date().toISOString(), // Store as UTC ISO
       status: status,
+      late_by: lateByMinutes,
+      present: true,
       work_type: workType,
       location_lat: latitude,
       location_lng: longitude
@@ -176,12 +196,21 @@ export async function checkOut(latitude: number, longitude: number) {
     const durationMs = checkOutTime.getTime() - checkInTime.getTime();
     const durationMinutes = Math.floor(durationMs / 1000 / 60);
 
-    // 3. Update Record
+    // 3. Calculate overtime: after 6 PM (18:00)
+    const officeEndTimeMinutes = 18 * 60; // 18:00
+    const currentMinutesAtCheckOut = now.getHours() * 60 + now.getMinutes();
+    let overtimeByMinutes = 0;
+    if (currentMinutesAtCheckOut > officeEndTimeMinutes) {
+      overtimeByMinutes = currentMinutesAtCheckOut - officeEndTimeMinutes;
+    }
+
+    // 4. Update Record
     const { error } = await supabase
       .from('attendance')
       .update({
         check_out: checkOutTime.toISOString(),
         total_minutes: durationMinutes,
+        overtime_by: overtimeByMinutes,
         location_lat: latitude,
         location_lng: longitude
       })
@@ -204,6 +233,12 @@ export async function getTodayStatus() {
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) return null;
+
+    // Auto-update weekends for the current month
+    const now = getOrgTime();
+    const month = now.getMonth() + 1; // getMonth() is 0-indexed
+    const year = now.getFullYear();
+    await ensureMonthWeekends(month, year);
 
     const today = getOrgDateString();
 

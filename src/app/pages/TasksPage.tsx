@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { Plus, CheckCircle2, Clock, Circle, Search, Users, Calendar as CalendarIcon, Loader2, AlertCircle, XCircle, Check, ChevronsUpDown } from 'lucide-react';
+import { Plus, CheckCircle2, Clock, Circle, Search, Users, Calendar as CalendarIcon, Loader2, XCircle, Check, ChevronsUpDown } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Progress } from '../components/ui/progress';
@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '../components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
 import { useAuth } from '../context/AuthContext';
-import { getTasks, createTask, getEmployeesList, updateTaskStatus } from '../actions/tasks';
+import { getTasks, createTask, getEmployeesList, updateTaskStatus, createSelfTask, checkAndNotifyNoTasks } from '../actions/tasks';
 import { toast } from 'react-hot-toast';
 import { useTransition } from 'react';
 import { cn } from '@/lib/utils';
@@ -70,6 +70,10 @@ export default function TasksPage() {
   const [openAssignee, setOpenAssignee] = useState(false);
   const [selectedAssigneeIds, setSelectedAssigneeIds] = useState<string[]>([]);
 
+  // Employee self-add dialog
+  const [isSelfAddOpen, setIsSelfAddOpen] = useState(false);
+  const [selfSaving, setSelfSaving] = useState(false);
+
   // Date Range State (default: current month)
   const getMonthDates = () => {
     const now = new Date();
@@ -114,6 +118,11 @@ export default function TasksPage() {
     }
   }, [canManageTasks, isAddOpen, viewAll]);
 
+  // Trigger 11AM no-task notification check on mount (fire-and-forget)
+  useEffect(() => {
+    checkAndNotifyNoTasks().catch(() => { });
+  }, []);
+
   const handleCreateTask = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (selectedAssigneeIds.length === 0) {
@@ -134,6 +143,21 @@ export default function TasksPage() {
       toast.error(result.error || 'Failed to create task.');
     }
     setSaving(false);
+  };
+
+  const handleCreateSelfTask = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setSelfSaving(true);
+    const formData = new FormData(e.currentTarget);
+    const result = await createSelfTask(formData);
+    if (result.success) {
+      toast.success(result.message);
+      setIsSelfAddOpen(false);
+      fetchTasks();
+    } else {
+      toast.error(result.error || 'Failed to add task.');
+    }
+    setSelfSaving(false);
   };
 
   const toggleAssignee = (id: string) => {
@@ -311,6 +335,65 @@ export default function TasksPage() {
                 </DialogContent>
               </Dialog>
             </>
+          )}
+
+          {/* Employee: Add My Task button */}
+          {!canManageTasks && (
+            <Dialog open={isSelfAddOpen} onOpenChange={setIsSelfAddOpen}>
+              <DialogTrigger asChild>
+                <Button className="bg-primary text-primary-foreground gap-2">
+                  <Plus className="w-4 h-4" /> Add My Task
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[480px]">
+                <DialogHeader>
+                  <DialogTitle>Add My Task</DialogTitle>
+                </DialogHeader>
+                <form onSubmit={handleCreateSelfTask} className="space-y-4 mt-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="self-title">Task Title</Label>
+                    <Input id="self-title" name="title" required placeholder="e.g. Prepare weekly report" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="self-description">Description</Label>
+                    <Textarea id="self-description" name="description" placeholder="Add details..." />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="self-priority">Priority</Label>
+                      <Select name="priority" defaultValue="medium">
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select priority" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="low">Low</SelectItem>
+                          <SelectItem value="medium">Medium</SelectItem>
+                          <SelectItem value="high">High</SelectItem>
+                          <SelectItem value="critical">Critical</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="self-start_day">Date</Label>
+                      <Input
+                        id="self-start_day"
+                        name="start_day"
+                        type="date"
+                        defaultValue={new Date().toISOString().split('T')[0]}
+                        required
+                      />
+                    </div>
+                  </div>
+                  <DialogFooter className="mt-6">
+                    <Button type="button" variant="outline" onClick={() => setIsSelfAddOpen(false)}>Cancel</Button>
+                    <Button type="submit" disabled={selfSaving}>
+                      {selfSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                      {selfSaving ? 'Saving...' : 'Add Task'}
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
           )}
         </div>
       </div>

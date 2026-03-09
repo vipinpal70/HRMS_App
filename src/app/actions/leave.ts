@@ -97,15 +97,46 @@ export async function createLeaveRequest(formData: FormData) {
   }
 }
 
+
+/**
+ * Count weekday (Mon–Fri) days between two date strings (inclusive).
+ */
+function countWorkingDays(startStr: string, endStr: string): number {
+  const start = new Date(startStr);
+  const end = new Date(endStr);
+  let count = 0;
+  const cur = new Date(start);
+  while (cur <= end) {
+    const day = cur.getDay();
+    if (day !== 0 && day !== 6) count++; // Skip weekends
+    cur.setDate(cur.getDate() + 1);
+  }
+  return count;
+}
+
 export async function updateLeaveStatus(id: string, status: 'approved' | 'rejected') {
   try {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
     // Check Admin Role
-    const { data: profile } = await supabase.from('profiles').select('role').eq('id', user!.id).single();
-    if (profile?.role !== 'admin' && profile?.role !== 'hr') {
+    const { data: adminProfile } = await supabase.from('profiles').select('role').eq('id', user!.id).single();
+    if (adminProfile?.role !== 'admin' && adminProfile?.role !== 'hr') {
       return { error: 'Unauthorized' };
+    }
+
+    // Fetch leave request details before updating
+    const { data: leaveReq, error: fetchError } = await supabase
+      .from('leave_requests')
+      .select('user_id, category, start_day, end_day, status')
+      .eq('id', id)
+      .single();
+
+    if (fetchError || !leaveReq) return { error: 'Leave request not found.' };
+
+    // Don't allow re-processing an already approved request
+    if (leaveReq.status === 'approved') {
+      return { error: 'Leave is already approved.' };
     }
 
     const { error } = await supabase
@@ -115,9 +146,68 @@ export async function updateLeaveStatus(id: string, status: 'approved' | 'reject
 
     if (error) throw error;
 
+    // Deduct remaining_leaves only on approval
+    if (status === 'approved') {
+      // Fetch the employee's current remaining_leaves
+      const { data: empProfile } = await supabase
+        .from('profiles')
+        .select('remaining_leaves')
+        .eq('id', leaveReq.user_id)
+        .single();
+
+      const currentLeaves = empProfile?.remaining_leaves ?? 0;
+
+      // Calculate days to deduct
+      let daysToDeduct = 0;
+      if (leaveReq.category === 'leave') {
+        // Count actual working days in the leave range
+        daysToDeduct = countWorkingDays(leaveReq.start_day, leaveReq.end_day || leaveReq.start_day);
+      }
+      // WFH doesn't deduct leave balance
+
+      if (daysToDeduct > 0) {
+        const newBalance = Math.max(0, currentLeaves - daysToDeduct);
+        await supabase
+          .from('profiles')
+          .update({ remaining_leaves: newBalance })
+          .eq('id', leaveReq.user_id);
+      }
+    }
+
     revalidatePath('/leave');
+    revalidatePath('/employees');
     return { success: true, message: `Request ${status}.` };
   } catch (error: any) {
+    return { error: error.message };
+  }
+}
+
+/**
+ * Deducts 1 from remaining_leaves for an absent day (no check-in on a workday).
+ * Call this from a scheduled job or admin action.
+ */
+export async function deductAbsentLeave(userId: string) {
+  try {
+    const supabase = await createClient();
+
+    const { data: empProfile } = await supabase
+      .from('profiles')
+      .select('remaining_leaves')
+      .eq('id', userId)
+      .single();
+
+    const currentLeaves = empProfile?.remaining_leaves ?? 0;
+    const newBalance = Math.max(0, currentLeaves - 1);
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({ remaining_leaves: newBalance })
+      .eq('id', userId);
+
+    if (error) throw error;
+    return { success: true };
+  } catch (error: any) {
+    console.error('deductAbsentLeave error:', error);
     return { error: error.message };
   }
 }

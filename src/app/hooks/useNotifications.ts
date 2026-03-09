@@ -196,6 +196,26 @@ export function useNotifications() {
         }
     }, [notifications, unreadCount]);
 
+    const clearAll = useCallback(async () => {
+        const previousNotifs = notifications;
+
+        // Optimistic update
+        setNotifications([]);
+        setUnreadCount(0);
+
+        const supabase = supabaseRef.current;
+        const { error } = await supabase
+            .from('notifications')
+            .delete()
+            .eq('user_id', user!.id);
+
+        if (error) {
+            // Revert on failure
+            setNotifications(previousNotifs);
+            setUnreadCount(previousNotifs.filter(n => !n.is_read).length);
+        }
+    }, [notifications, user]);
+
     const refresh = useCallback(() => {
         fetchInitial();
     }, [fetchInitial]);
@@ -206,6 +226,7 @@ export function useNotifications() {
         isLoading,
         markAsRead,
         markAllAsRead,
+        clearAll,
         refresh,
     };
 }

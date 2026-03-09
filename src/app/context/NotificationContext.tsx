@@ -9,6 +9,7 @@ interface NotificationContextType {
   isLoading: boolean;
   markAsRead: (id: string) => Promise<void>;
   markAllAsRead: () => Promise<void>;
+  clearAll: () => Promise<void>;
   refresh: () => void;
 }
 

@@ -20,21 +20,11 @@ import { Button } from '../components/ui/button';
 import { Progress } from '../components/ui/progress';
 import { Calendar } from '../components/ui/calendar';
 import { getTodayStatus, checkIn, checkOut, getAttendanceHistory } from '../actions/attendance';
+import { getYearHolidays } from '../actions/calendar';
 import { getTasks } from '../actions/tasks';
 import { getQuoteOfDay } from '../actions/quotes';
 import { getCompanySettings } from '../actions/settings';
 import { toast } from 'react-hot-toast';
-
-const holidays = [
-  { date: new Date(2026, 0, 1), label: 'New Year', type: 'holiday' as const },
-  { date: new Date(2026, 0, 26), label: 'Republic Day', type: 'holiday' as const },
-  { date: new Date(2026, 1, 16), label: 'Mahashivratri', type: 'holiday' as const },
-  { date: new Date(2026, 2, 4), label: 'Holi', type: 'holiday' as const },
-  { date: new Date(2026, 7, 28), label: 'Raksha Bandhan', type: 'holiday' as const },
-  { date: new Date(2026, 9, 2), label: 'Gandhi Jayanthi', type: 'holiday' as const },
-  { date: new Date(2026, 9, 20), label: 'Dusshera', type: 'holiday' as const },
-  { date: new Date(2026, 10, 9), label: 'Post Diwali', type: 'holiday' as const },
-];
 
 const holidayTypeStyles = {
   holiday: 'bg-destructive/10 text-destructive',
@@ -73,6 +63,8 @@ export default function Dashboard() {
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [tasks, setTasks] = useState<any[]>([]);
   const [quote, setQuote] = useState<{ q: string; a: string } | null>(null);
+  const [currentYear] = useState(new Date().getFullYear());
+  const [holidays, setHolidays] = useState<{ date: Date; label: string; type: 'holiday' | 'event' }[]>([]);
 
   // Fetch initial status + office hours
   useEffect(() => {
@@ -156,6 +148,26 @@ export default function Dashboard() {
     }
     fetchQuotes();
   }, [])
+
+  useEffect(() => {
+    async function fetchHolidays() {
+      try {
+        const yearData = await getYearHolidays(currentYear);
+        const mappedHolidays = yearData.map((h: any) => ({
+          date: new Date(h.date),
+          label: h.description,
+          type: h.type
+        }));
+        setHolidays(mappedHolidays);
+      } catch (error) {
+        console.error('Error fetching holidays:', error);
+      }
+    }
+    fetchHolidays();
+  }, [currentYear]);
+
+
+
 
   const handleCheckIn = async () => {
     setLoading(true);

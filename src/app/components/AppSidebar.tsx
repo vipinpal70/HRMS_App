@@ -33,7 +33,7 @@ const navItems = [
   { icon: Clock, label: 'Attendance', path: '/attendance', roles: ['emp', 'admin', 'hr'] },
   { icon: ListTodo, label: 'Tasks', path: '/tasks', roles: ['emp', 'admin', 'hr'] },
   { icon: FileText, label: 'Leave & WFH', path: '/leave', roles: ['emp', 'admin', 'hr'] },
-  { icon: CalendarDays, label: 'Calendar', path: '/calendar', roles: ['emp', 'admin', 'hr'] },
+  { icon: CalendarDays, label: 'Calendar', path: '/calendar', roles: ['admin', 'hr'] },
   { icon: BarChart3, label: 'Reports', path: '/reports', roles: ['admin', 'hr'] },
   { icon: Users, label: 'Employees', path: '/employees', roles: ['admin', 'hr'] },
   { icon: Settings, label: 'Settings', path: '/settings', roles: ['admin'] },

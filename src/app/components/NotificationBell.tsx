@@ -40,6 +40,7 @@ export default function NotificationBell({ showFullList = true }: NotificationBe
     unreadCount,
     markAsRead,
     markAllAsRead,
+    clearAll,
     isLoading,
   } = useNotificationContext();
 
@@ -91,16 +92,29 @@ export default function NotificationBell({ showFullList = true }: NotificationBe
                 <Bell className="w-4 h-4 text-primary" />
                 Notifications
               </span>
-              {unreadCount > 0 && (
-                <button
-                  onClick={async (e) => {
-                    e.stopPropagation();
-                    await markAllAsRead();
-                  }}
-                  className="text-[10px] uppercase tracking-wider font-bold text-primary hover:text-primary/80"
-                >
-                  Clear All
-                </button>
+              {notifications.length > 0 && (
+                <div className="flex items-center gap-2">
+                  {unreadCount > 0 && (
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        await markAllAsRead();
+                      }}
+                      className="text-[10px] font-bold text-primary hover:text-primary/80"
+                    >
+                      Mark all as read
+                    </button>
+                  )}
+                  <button
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      await clearAll();
+                    }}
+                    className="text-[10px] font-bold text-destructive hover:text-destructive/80"
+                  >
+                    Clear All
+                  </button>
+                </div>
               )}
             </div>
             <div className="max-h-[300px] overflow-y-auto">
@@ -159,15 +173,23 @@ export default function NotificationBell({ showFullList = true }: NotificationBe
         <div className="absolute -right-10 md:right-auto md:left-0 bottom-12 mb-2 w-[250px] sm:w-80 bg-background border border-border rounded-lg shadow-lg z-50 overflow-hidden">
           <div className="p-3 border-b border-border font-semibold text-xs md:text-sm flex justify-between items-center">
             <span>Notifications</span>
-            {unreadCount > 0 && (
-              <button
-                onClick={async () => {
-                  await markAllAsRead();
-                }}
-                className="text-xs text-primary hover:underline"
-              >
-                Mark all read
-              </button>
+            {notifications.length > 0 && (
+              <div className="flex items-center gap-2">
+                {unreadCount > 0 && (
+                  <button
+                    onClick={async () => { await markAllAsRead(); }}
+                    className="text-xs text-primary hover:underline"
+                  >
+                    Mark all read
+                  </button>
+                )}
+                <button
+                  onClick={async () => { await clearAll(); }}
+                  className="flex items-center gap-1 text-xs text-destructive hover:text-destructive/80"
+                >
+                  <Trash2 className="w-3 h-3" /> Clear All
+                </button>
+              </div>
             )}
           </div>
 
