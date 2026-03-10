@@ -1,6 +1,7 @@
 'use server';
 
 import { createClient } from '@/lib/supabase/server';
+import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
 
 export type UserRole = 'emp' | 'admin' | 'hr';
@@ -119,5 +120,52 @@ export async function updateProfile(id: string, updates: Partial<Profile>) {
     } catch (error: any) {
         console.error('updateProfile Error:', error);
         return { error: error.message };
+    }
+}
+
+export async function deleteProfile(id: string) {
+    try {
+        const supabase = await createClient();
+
+        // Check permissions
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return { error: 'Unauthorized' };
+
+        const { data: currentUserProfile } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', user.id)
+            .single();
+
+        const isAdmin = currentUserProfile?.role === 'admin';
+
+        if (!isAdmin) {
+            return { error: 'Only administrators can delete profiles.' };
+        }
+
+        // We can't delete ourselves
+        if (user.id === id) {
+            return { error: 'You cannot delete your own profile.' };
+        }
+
+        // Use Supabase Admin client to bypass RLS and avoid recursive policy checks
+        const supabaseAdmin = createAdminClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.SUPABASE_SERVICE_ROLE_KEY!
+        );
+
+        const { error } = await supabaseAdmin
+            .from('profiles')
+            .delete()
+            .eq('id', id);
+
+        if (error) throw error;
+
+        revalidatePath('/employees');
+
+        return { success: true };
+    } catch (error: any) {
+        console.error('deleteProfile Error:', error);
+        return { error: error.message || 'Failed to delete profile' };
     }
 }
