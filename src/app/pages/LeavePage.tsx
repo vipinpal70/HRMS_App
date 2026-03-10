@@ -20,6 +20,7 @@ interface LeaveRequest {
   end_date: string;
   reason: string;
   status: LeaveStatus;
+  created_at?: string;
   user_name?: string;
   user_email?: string;
 }
@@ -154,8 +155,8 @@ export default function LeavePage() {
                 key={t}
                 onClick={() => setForm({ ...form, type: t })}
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium capitalize transition-colors ${form.type === t
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-secondary text-secondary-foreground'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-secondary text-secondary-foreground'
                   }`}
               >
                 {t}
@@ -172,6 +173,19 @@ export default function LeavePage() {
               <Input type="date" value={form.endDate} onChange={(e) => setForm({ ...form, endDate: e.target.value })} />
             </div>
           </div>
+          {form.startDate && (
+            <p className="text-xs text-muted-foreground">
+              Total days:{' '}
+              <span className="font-semibold text-foreground">
+                {(() => {
+                  const start = new Date(form.startDate);
+                  const end = new Date(form.endDate || form.startDate);
+                  const diff = Math.round((end.getTime() - start.getTime()) / 86400000) + 1;
+                  return diff > 0 ? `${diff} day${diff > 1 ? 's' : ''}` : '—';
+                })()}
+              </span>
+            </p>
+          )}
           <div>
             <label className="text-xs text-muted-foreground mb-1 block">Reason</label>
             <Textarea value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} placeholder="Reason for leave..." />
@@ -192,8 +206,8 @@ export default function LeavePage() {
             const StatusIcon = statusIcons[req.status];
             return (
               <div key={req.id} className={`stat-card flex flex-col sm:flex-row sm:items-center gap-3 ${isAdmin && overlappingKeys.has(`${req.start_date}__${req.end_date || req.start_date}`)
-                  ? 'border-l-4 border-l-amber-500'
-                  : ''
+                ? 'border-l-4 border-l-amber-500'
+                : ''
                 }`}>
                 <div className="flex-1 space-y-1">
                   <div className="flex items-center gap-2 flex-wrap">
@@ -213,7 +227,22 @@ export default function LeavePage() {
                   <p className="text-xs text-muted-foreground flex items-center gap-1">
                     <Calendar className="w-3 h-3" />
                     {req.start_date} {req.end_date !== req.start_date && `→ ${req.end_date}`}
+                    {' '}·{' '}
+                    {(() => {
+                      const start = new Date(req.start_date);
+                      const end = new Date(req.end_date || req.start_date);
+                      const diff = Math.round((end.getTime() - start.getTime()) / 86400000) + 1;
+                      return `${diff} day${diff > 1 ? 's' : ''}`;
+                    })()}
                   </p>
+                  {req.created_at && (
+                    <p className="text-xs text-muted-foreground">
+                      Requested on{' '}
+                      {new Date(req.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      {' at '}
+                      {new Date(req.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                    </p>
+                  )}
                 </div>
                 {isAdmin && req.status === 'pending' && (
                   <div className="flex gap-2">

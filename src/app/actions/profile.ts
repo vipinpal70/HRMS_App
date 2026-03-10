@@ -121,3 +121,39 @@ export async function updateProfile(id: string, updates: Partial<Profile>) {
         return { error: error.message };
     }
 }
+
+// Delete employee
+export async function deleteEmployee(id: string) {
+    try {
+        const supabase = await createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return { error: 'Unauthorized' };
+
+        const { data: currentUserProfile } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', user.id)
+            .single();
+
+        console.log("user id: ", user.id);
+        console.log("cuurentUserProfile: ", currentUserProfile);
+
+        const isAdmin = currentUserProfile?.role === 'admin';
+        if (!isAdmin) {
+            return { error: 'You do not have permission to delete this employee.' };
+        }
+
+        const { error } = await supabase
+            .from('profiles')
+            .delete()
+            .eq('id', id);
+
+        if (error) throw error;
+
+        revalidatePath('/employees');
+        return { success: true, message: 'Employee deleted successfully.' };
+    } catch (error: any) {
+        console.error('deleteEmployee Error:', error);
+        return { error: error.message };
+    }
+}
