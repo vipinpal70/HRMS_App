@@ -1,6 +1,7 @@
 'use server';
 
 import { createClient } from '@/lib/supabase/server';
+import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
 
 export async function getCompanySettings() {
@@ -112,3 +113,84 @@ export async function updateCompanySettings(formData: FormData) {
     return { error: error.message };
   }
 }
+
+/**
+ * Admin only: Set total_leaves for all employees.
+ * Adjusts remaining_leaves by the same delta (clamped to 0).
+ * Example: if quota goes from 20→24, each employee gains 4 remaining days.
+ */
+export async function updateTotalLeaves(newTotal: number) {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { error: 'Unauthorized' };
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    if (profile?.role !== 'admin') {
+      return { error: 'Only admins can update leave quotas.' };
+    }
+
+    if (newTotal < 0 || newTotal > 365) {
+      return { error: 'Total leaves must be between 0 and 365.' };
+    }
+
+    // Use admin client to bypass RLS for bulk profile updates
+    const supabaseAdmin = createAdminClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+
+    // Fetch all employee/hr profiles to compute delta per person
+    const { data: employees, error: fetchError } = await supabaseAdmin
+      .from('profiles')
+      .select('id, total_leaves, remaining_leaves')
+      .in('role', ['emp', 'hr']);
+
+    if (fetchError) throw fetchError;
+    if (!employees || employees.length === 0) {
+      return { error: 'No employee profiles found.' };
+    }
+
+    // Update each profile: new total + adjust remaining by delta
+    const updates = employees.map(async (emp) => {
+      const oldTotal = emp.total_leaves ?? newTotal;
+      const delta = newTotal - oldTotal;
+      const newRemaining = Math.max(0, (emp.remaining_leaves ?? 0) + delta);
+      return supabaseAdmin
+        .from('profiles')
+        .update({ total_leaves: newTotal, remaining_leaves: newRemaining })
+        .eq('id', emp.id);
+    });
+
+    await Promise.all(updates);
+
+    revalidatePath('/settings');
+    revalidatePath('/employees');
+    return { success: true, message: `Leave quota updated to ${newTotal} days for all employees.` };
+  } catch (error: any) {
+    console.error('updateTotalLeaves error:', error);
+    return { error: error.message };
+  }
+}
+
+/** Read the current total_leaves quota from the first available employee profile. */
+export async function getCurrentTotalLeaves(): Promise<number> {
+  try {
+    const supabase = await createClient();
+    const { data } = await supabase
+      .from('profiles')
+      .select('total_leaves')
+      .in('role', ['emp', 'hr'])
+      .limit(1)
+      .single();
+    return data?.total_leaves ?? 20;
+  } catch {
+    return 20;
+  }
+}
+

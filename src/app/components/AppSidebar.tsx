@@ -190,7 +190,11 @@ export default function AppSidebar({
             `}
             >
               <div className="w-9 h-9 rounded-xl bg-white/80 dark:bg-white text-sidebar-accent flex items-center justify-center text-sm font-extrabold shrink-0 shadow-sm">
-                {user?.name?.charAt(0) || user?.email?.charAt(0)}
+                {user?.avatar ? (
+                  <img src={user?.avatar} alt={user?.name} className="w-full h-full object-cover" />
+                ) : (
+                  user?.name?.split(' ').map(n => n[0]).join('')
+                )}
               </div>
 
               {!collapsed && (

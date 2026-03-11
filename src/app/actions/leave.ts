@@ -1,6 +1,7 @@
 'use server';
 
 import { createClient } from '@/lib/supabase/server';
+import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
 
 export async function getLeaveRequests(userId?: string) {
@@ -41,6 +42,7 @@ export async function getLeaveRequests(userId?: string) {
       'leave': 'full-day',
       'halfday': 'half-day',
       'wfh': 'wfh',
+      'hybrid': 'hybrid',
     };
 
     return data.map(req => ({
@@ -69,11 +71,12 @@ export async function createLeaveRequest(formData: FormData) {
     const end_date = formData.get('end_date') as string;
     const reason = formData.get('reason') as string;
 
-    // Map UI type → DB category (constraint allows: 'leave', 'wfh', 'halfday')
+    // Map UI type → DB category (constraint allows: 'leave', 'wfh', 'halfday', 'hybrid')
     const categoryMap: Record<string, string> = {
       'full-day': 'leave',
       'half-day': 'halfday',
       'wfh': 'wfh',
+      'hybrid': 'hybrid',
     };
     const category = categoryMap[uiType] || uiType;
     console.log('createLeaveRequest payload:', { uiType, category, start_date, end_date, reason });
@@ -93,6 +96,31 @@ export async function createLeaveRequest(formData: FormData) {
     return { success: true, message: 'Leave request submitted.' };
   } catch (error: any) {
     console.error('Create leave error:', error);
+    return { error: error.message };
+  }
+}
+
+export async function deleteLeaveRequest(id: string) {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) return { error: 'Unauthorized' };
+
+    // Use Supabase Admin client to bypass RLS and avoid recursive policy checks
+    const supabaseAdmin = createAdminClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+
+    const { error } = await supabaseAdmin.from('leave_requests').delete().eq('id', id);
+
+    if (error) throw error;
+
+    revalidatePath('/leave');
+    return { success: true, message: 'Leave request deleted.' };
+  } catch (error: any) {
+    console.error('Delete leave error:', error);
     return { error: error.message };
   }
 }

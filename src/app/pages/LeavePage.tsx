@@ -6,11 +6,11 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Textarea } from '../components/ui/textarea';
 import { Badge } from '../components/ui/badge';
-import { Calendar, Send, CheckCircle2, XCircle, Clock, Search, Users, AlertTriangle } from 'lucide-react';
-import { getLeaveRequests, createLeaveRequest, updateLeaveStatus } from '../actions/leave';
+import { Calendar, Send, CheckCircle2, XCircle, Clock, Search, Users, AlertTriangle, Trash, Loader2 } from 'lucide-react';
+import { getLeaveRequests, createLeaveRequest, updateLeaveStatus, deleteLeaveRequest } from '../actions/leave';
 import { toast } from 'sonner';
 
-type LeaveType = 'full-day' | 'half-day' | 'wfh';
+type LeaveType = 'full-day' | 'half-day' | 'wfh' | 'hybrid';
 type LeaveStatus = 'pending' | 'approved' | 'rejected';
 
 interface LeaveRequest {
@@ -32,10 +32,18 @@ const statusColors = {
   rejected: 'bg-destructive/10 text-destructive',
 };
 
-const typeColors = {
+const typeColors: Record<string, string> = {
   'full-day': 'bg-info/10 text-info',
   'half-day': 'bg-accent/10 text-accent',
   wfh: 'bg-primary/10 text-primary',
+  hybrid: 'bg-teal-500/10 text-teal-600 dark:text-teal-400',
+};
+
+const typeLabels: Record<string, string> = {
+  'full-day': 'Full Day',
+  'half-day': 'Half Day',
+  wfh: 'WFH',
+  hybrid: 'Hybrid',
 };
 
 export default function LeavePage() {
@@ -62,6 +70,18 @@ export default function LeavePage() {
   useEffect(() => {
     fetchData();
   }, []);
+
+
+  // Delete Leave Request
+  const handleDelete = async (id: string) => {
+    const result = await deleteLeaveRequest(id);
+    if (result.success) {
+      toast.success(result.message);
+      fetchData();
+    } else {
+      toast.error(result.error || 'Failed to delete request.');
+    }
+  };
 
   const handleSubmit = async () => {
     if (!form.startDate || !form.reason) return;
@@ -150,7 +170,7 @@ export default function LeavePage() {
         <div className="stat-card space-y-4">
           <h2 className="font-semibold">New Leave Request</h2>
           <div className="flex flex-wrap gap-2">
-            {(['full-day', 'half-day', 'wfh'] as LeaveType[]).map((t) => (
+            {(['full-day', 'half-day', 'wfh', 'hybrid'] as LeaveType[]).map((t) => (
               <button
                 key={t}
                 onClick={() => setForm({ ...form, type: t })}
@@ -159,7 +179,7 @@ export default function LeavePage() {
                   : 'bg-secondary text-secondary-foreground'
                   }`}
               >
-                {t}
+                {typeLabels[t] ?? t}
               </button>
             ))}
           </div>
@@ -210,17 +230,26 @@ export default function LeavePage() {
                 : ''
                 }`}>
                 <div className="flex-1 space-y-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className={`badge-status capitalize ${typeColors[req.type]}`}>{req.type}</span>
-                    <span className={`badge-status capitalize ${statusColors[req.status]}`}>
-                      <StatusIcon className="w-3 h-3 mr-1" />
-                      {req.status}
-                    </span>
-                    {isAdmin && <span className="text-xs text-muted-foreground bg-secondary px-2 py-0.5 rounded">by {req.user_name}</span>}
-                    {isAdmin && overlappingKeys.has(`${req.start_date}__${req.end_date || req.start_date}`) && (
-                      <span className="flex items-center gap-1 text-xs font-medium text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded">
-                        <AlertTriangle className="w-3 h-3" /> Overlapping
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`badge-status capitalize ${typeColors[req.type] ?? 'bg-secondary text-secondary-foreground'}`}>{typeLabels[req.type] ?? req.type}</span>
+                      <span className={`badge-status capitalize ${statusColors[req.status]}`}>
+                        <StatusIcon className="w-3 h-3 mr-1" />
+                        {req.status}
                       </span>
+                      {isAdmin && <span className="text-xs text-muted-foreground bg-secondary px-2 py-0.5 rounded">by {req.user_name}</span>}
+                      {isAdmin && overlappingKeys.has(`${req.start_date}__${req.end_date || req.start_date}`) && (
+                        <span className="flex items-center gap-1 text-xs font-medium text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded">
+                          <AlertTriangle className="w-3 h-3" /> Overlapping
+                        </span>
+                      )}
+                    </div>
+
+                    {isAdmin && req.status !== 'pending' && (
+                      <button onClick={() => handleDelete(req.id)} className="flex items-center gap-1 text-xs font-medium text-destructive bg-destructive/10 px-2 py-0.5 rounded">
+                        <Trash className="w-3 h-3" />
+                        {loading ? 'Deleting...' : 'Delete'}
+                      </button>
                     )}
                   </div>
                   <p className="text-sm">{req.reason}</p>

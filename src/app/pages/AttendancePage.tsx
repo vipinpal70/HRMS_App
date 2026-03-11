@@ -15,10 +15,16 @@ import { toast } from 'react-hot-toast';
 interface AttendanceRecord {
   id: string;
   date: string;
-  check_in: string | null;
-  check_out: string | null;
-  check_in_display: string | null;
-  check_out_display: string | null;
+  // Session 1
+  check_in_1: string | null;
+  check_out_1: string | null;
+  check_in_display: string | null;   // formatted check_in_1
+  check_out_display: string | null;  // formatted check_out_1
+  // Session 2 (hybrid)
+  check_in_2: string | null;
+  check_out_2: string | null;
+  check_in_2_display: string | null;
+  check_out_2_display: string | null;
   hours_display: string | null;
   total_minutes: number | null;
   status: string;
@@ -65,6 +71,7 @@ const statusConfig: Record<string, { label: string; cls: string }> = {
   half_day: { label: 'Half Day', cls: 'bg-orange-500 text-white' },
   'half-day': { label: 'Half Day', cls: 'bg-orange-500 text-white' },
   wfh: { label: 'WFH', cls: 'bg-blue-500 text-white' },
+  hybrid: { label: 'Hybrid', cls: 'bg-teal-500 text-white' },
   leave: { label: 'Leave', cls: 'bg-purple-500 text-white' },
   auto_checkout: { label: 'Auto C/O', cls: 'bg-slate-500 text-white' },
 };
@@ -82,25 +89,40 @@ function StatusBadge({ status }: { status: string }) {
 
 function exportToCSV(records: AttendanceRecord[], fileName: string) {
   const isAdmin = 'employee_name' in (records[0] ?? {});
-  const headers = isAdmin
-    ? ['Employee', 'Employee ID', 'Designation', 'Date', 'Check In', 'Check Out', 'Hours', 'Work Type', 'Status']
-    : ['Date', 'Check In', 'Check Out', 'Hours', 'Work Type', 'Status'];
+  // Only include session-2 columns if any record in the set has hybrid/wfh
+  const hasMultiSession = records.some(r => r.work_type === 'hybrid' || r.work_type === 'wfh');
 
-  const rows = records.map(r =>
-    isAdmin
+  const headers = isAdmin
+    ? [
+      'Employee', 'Employee ID', 'Designation', 'Date',
+      'Check In', 'Check Out',
+      ...(hasMultiSession ? ['Check In 2', 'Check Out 2'] : []),
+      'Hours', 'Work Type', 'Status',
+    ]
+    : [
+      'Date',
+      'Check In', 'Check Out',
+      ...(hasMultiSession ? ['Check In 2', 'Check Out 2'] : []),
+      'Hours', 'Work Type', 'Status',
+    ];
+
+  const rows = records.map(r => {
+    const session2Cells = hasMultiSession
+      ? [r.check_in_2_display ?? '', r.check_out_2_display ?? '']
+      : [];
+    return isAdmin
       ? [
-        r.employee_name ?? '',
-        r.employee_emp_id ?? '',
-        r.employee_designation ?? '',
-        r.date,
-        r.check_in_display ?? '',
-        r.check_out_display ?? '',
-        r.hours_display ?? '',
-        r.work_type ?? '',
-        r.status,
+        r.employee_name ?? '', r.employee_emp_id ?? '', r.employee_designation ?? '',
+        r.date, r.check_in_display ?? '', r.check_out_display ?? '',
+        ...session2Cells,
+        r.hours_display ?? '', r.work_type ?? '', r.status,
       ]
-      : [r.date, r.check_in_display ?? '', r.check_out_display ?? '', r.hours_display ?? '', r.work_type ?? '', r.status]
-  );
+      : [
+        r.date, r.check_in_display ?? '', r.check_out_display ?? '',
+        ...session2Cells,
+        r.hours_display ?? '', r.work_type ?? '', r.status,
+      ];
+  });
 
   const csv = [headers, ...rows].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -153,8 +175,8 @@ function MonthPicker({
 // ─── Stats Cards ──────────────────────────────────────────────────────────────
 
 function StatsRow({ records }: { records: AttendanceRecord[] }) {
-  // "Present" = total check-ins (any record that has a check_in time)
-  const present = records.filter(r => r.check_in != null).length;
+  // "Present" = total check-ins (any record that has a check_in_1 time)
+  const present = records.filter(r => r.check_in_1 != null).length;
   // "Late" = only records explicitly marked as late
   const late = records.filter(r => r.status === 'late').length;
   const absent = records.filter(r => r.status === 'absent').length;
@@ -215,6 +237,9 @@ function AttendanceTable({
     );
   }
 
+  // Only show session-2 columns when at least one record in the view is hybrid/wfh
+  const showSession2 = records.some(r => r.work_type === 'hybrid' || r.work_type === 'wfh');
+
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
@@ -224,6 +249,8 @@ function AttendanceTable({
             <th className="text-left py-3 px-3 font-medium">Date</th>
             <th className="text-left py-3 px-3 font-medium">Check In</th>
             <th className="text-left py-3 px-3 font-medium">Check Out</th>
+            {showSession2 && <th className="text-left py-3 px-3 font-medium">Check In 2</th>}
+            {showSession2 && <th className="text-left py-3 px-3 font-medium">Check Out 2</th>}
             <th className="text-left py-3 px-3 font-medium">Hours</th>
             <th className="text-left py-3 px-3 font-medium">Type</th>
             <th className="text-left py-3 px-3 font-medium">Status</th>
@@ -271,6 +298,20 @@ function AttendanceTable({
                   ? <span className="text-sky-600 dark:text-sky-400">{record.check_out_display}</span>
                   : <span className="text-muted-foreground">—</span>}
               </td>
+              {showSession2 && (
+                <td className="py-3 px-3 text-sm font-medium">
+                  {record.check_in_2_display
+                    ? <span className="text-emerald-600 dark:text-emerald-400">{record.check_in_2_display}</span>
+                    : <span className="text-muted-foreground">—</span>}
+                </td>
+              )}
+              {showSession2 && (
+                <td className="py-3 px-3 text-sm font-medium">
+                  {record.check_out_2_display
+                    ? <span className="text-sky-600 dark:text-sky-400">{record.check_out_2_display}</span>
+                    : <span className="text-muted-foreground">—</span>}
+                </td>
+              )}
               <td className="py-3 px-3 text-xs font-medium">
                 {record.hours_display ?? <span className="text-muted-foreground">—</span>}
               </td>

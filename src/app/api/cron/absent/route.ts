@@ -37,10 +37,7 @@ export async function GET(request: Request) {
       date: today,
       present: false,
       status: 'absent',
-      check_in: null,
-      check_out: null,
       total_minutes: 0,
-      work_type: 'none'
     }));
 
     const { error: insertError } = await supabase

@@ -3,7 +3,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { getOrgDateString, getOrgTime, formatTime } from '@/lib/time';
 import { revalidatePath } from 'next/cache';
-import { format } from 'date-fns-tz';
 import { ORG_TIMEZONE } from '@/lib/time';
 import { ensureMonthWeekends } from './calendar';
 
@@ -68,6 +67,21 @@ async function getSettings(supabase: any) {
   };
 }
 
+// Helper: check if employee has an approved WFH or Hybrid leave for a given date
+async function getApprovedLeaveForDate(supabase: any, userId: string, date: string) {
+  const { data } = await supabase
+    .from('leave_requests')
+    .select('id, category')
+    .eq('user_id', userId)
+    .eq('status', 'approved')
+    .in('category', ['wfh', 'hybrid'])
+    .lte('start_day', date)
+    .gte('end_day', date)
+    .limit(1)
+    .single();
+  return data ?? null; // { id, category } or null
+}
+
 export async function checkIn(latitude: number, longitude: number) {
   try {
     const supabase = await createClient();
@@ -77,12 +91,12 @@ export async function checkIn(latitude: number, longitude: number) {
       return { error: 'Unauthorized' };
     }
 
-    // 0. Validate Office Hours & Get Location
+    // 0. Get settings & current org time
     const settings = await getSettings(supabase);
     const now = getOrgTime();
+    const today = getOrgDateString();
 
     // 0.1 Holiday Check
-    const today = getOrgDateString();
     const { data: calendarDay } = await supabase
       .from('company_calendar')
       .select('type')
@@ -93,22 +107,7 @@ export async function checkIn(latitude: number, longitude: number) {
       return { error: 'Not able to check-in on holiday' };
     }
 
-    if (!isWithinOfficeHours(now, settings.start, settings.end)) {
-      return { error: `Check-in is only allowed between ${formatTimeDisplay(settings.start)} and ${formatTimeDisplay(settings.end)}.` };
-    }
-
-    // 1. Determine Work Type (GPS/Weekend based)
-    const distanceKm = calculateDistance(latitude, longitude, settings.office_lat, settings.office_lng);
-    const distanceMeters = distanceKm * 1000;
-
-    // Determine if today is Saturday or Sunday
-    const dayOfWeek = now.getDay(); // 0 is Sunday, 6 is Saturday
-    const isWeekendByDay = (dayOfWeek === 0 || dayOfWeek === 6);
-
-    // If weekend, or user is outside the allowed radius, mark as WFH
-    const workType = (isWeekendByDay || distanceMeters > settings.allowed_radius_meters) ? 'wfh' : 'office';
-
-    // 2. Check if already checked in
+    // 1. Check for existing attendance record
     const { data: existing } = await supabase
       .from('attendance')
       .select('*')
@@ -116,37 +115,72 @@ export async function checkIn(latitude: number, longitude: number) {
       .eq('date', today)
       .single();
 
+    // 2. Enforce max 2 check-ins per day
     if (existing) {
-      return { error: 'Already checked in for today.' };
+      if (existing.check_in_1 && existing.check_in_2) {
+        return { error: 'Maximum 2 check-ins per day already reached.' };
+      }
+      // For a second check-in, the first session must be closed (check_out_1 set)
+      if (existing.check_in_1 && !existing.check_out_1) {
+        return { error: 'Please check out from your current session before starting a new one.' };
+      }
     }
 
-    // 3. Determine status & Late calculation
+    // 3. Approval-first: check for approved WFH or Hybrid leave today
+    const approval = await getApprovedLeaveForDate(supabase, user.id, today);
+
+    let workType: string;
+
+    if (approval) {
+      // Approved WFH or Hybrid — allow from anywhere, no office hours restriction
+      workType = approval.category; // 'wfh' or 'hybrid'
+    } else {
+      // No approval — must be in office: enforce office hours
+      if (!isWithinOfficeHours(now, settings.start, settings.end)) {
+        return { error: `Office check-in is only allowed between ${formatTimeDisplay(settings.start)} and ${formatTimeDisplay(settings.end)}.` };
+      }
+
+      // GPS distance check — must be inside geofence
+      const distanceKm = calculateDistance(latitude, longitude, settings.office_lat, settings.office_lng);
+      const distanceMeters = distanceKm * 1000;
+
+      if (distanceMeters > settings.allowed_radius_meters) {
+        return { error: 'You are outside the office geofence. Only office check-in is allowed without WFH/Hybrid approval.' };
+      }
+      workType = 'office';
+    }
+
+    // 4. Determine status
+    // Late (after 10:30 AM) only applies to office check-ins
+    // WFH and Hybrid are always 'present'
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    const lateThreshold = 10 * 60 + 30; // 10:30 AM
+    const statusValue = (workType === 'office' && currentMinutes > lateThreshold) ? 'late' : 'present';
 
-    // Threshold: 10:30 AM — anything after this is Late
-    const lateThreshold = 10 * 60 + 30;
-    let lateByMinutes = 0;
-    let status = 'present';
+    // 5. Insert or update
+    const nowIso = new Date().toISOString();
 
-    if (currentMinutes > lateThreshold) {
-      status = 'late';
-      lateByMinutes = currentMinutes - lateThreshold;
+    if (!existing) {
+      // First check-in of the day → insert new record
+      const { error } = await supabase.from('attendance').insert({
+        user_id: user.id,
+        date: today,
+        check_in_1: nowIso,
+        present: true,
+        work_type: workType,
+        status: statusValue,
+        latitude,
+        longitude
+      });
+      if (error) throw error;
+    } else {
+      // Second check-in (after first checkout)
+      const { error } = await supabase
+        .from('attendance')
+        .update({ check_in_2: nowIso })
+        .eq('id', existing.id);
+      if (error) throw error;
     }
-
-    // 4. Insert Record
-    const { error } = await supabase.from('attendance').insert({
-      user_id: user.id,
-      date: today,
-      check_in: new Date().toISOString(), // Store as UTC ISO
-      status: status,
-      late_by: lateByMinutes,
-      present: true,
-      work_type: workType,
-      location_lat: latitude,
-      location_lng: longitude
-    });
-
-    if (error) throw error;
 
     revalidatePath('/');
     return { success: true, message: `Checked in successfully at ${new Date().toLocaleTimeString()}` };
@@ -165,16 +199,12 @@ export async function checkOut(latitude: number, longitude: number) {
       return { error: 'Unauthorized' };
     }
 
-    // 0. Validate Office Hours
+    // 0. Validate Office Hours — only for office mode (no WFH/Hybrid approval)
     const settings = await getSettings(supabase);
     const now = getOrgTime();
-    if (!isWithinOfficeHours(now, settings.start, settings.end)) {
-      return { error: `Check-out is only allowed between ${formatTimeDisplay(settings.start)} and ${formatTimeDisplay(settings.end)}.` };
-    }
-
     const today = getOrgDateString();
 
-    // 1. Find the active session
+    // 1. Find the attendance record for today
     const { data: session } = await supabase
       .from('attendance')
       .select('*')
@@ -186,40 +216,59 @@ export async function checkOut(latitude: number, longitude: number) {
       return { error: 'No check-in record found for today.' };
     }
 
-    if (session.check_out) {
-      return { error: 'Already checked out.' };
+    // Only enforce office hours for office work type
+    if (session.work_type === 'office' && !isWithinOfficeHours(now, settings.start, settings.end)) {
+      return { error: `Office check-out is only allowed between ${formatTimeDisplay(settings.start)} and ${formatTimeDisplay(settings.end)}.` };
+    }
+    const nowIso = new Date().toISOString();
+    let sessionMinutes = 0;
+    let updates: Record<string, any> = {};
+
+    // 2. Determine which session to close
+    if (session.check_in_1 && !session.check_out_1) {
+      // First session checkout
+      const checkInTime = new Date(session.check_in_1);
+      const checkOutTime = new Date(nowIso);
+      sessionMinutes = Math.floor((checkOutTime.getTime() - checkInTime.getTime()) / 1000 / 60);
+      const previousTotal = session.total_minutes ?? 0;
+      updates = {
+        check_out_1: nowIso,
+        total_minutes: previousTotal + sessionMinutes,
+        latitude,
+        longitude
+      };
+    } else if (session.check_in_2 && !session.check_out_2) {
+      // Second session checkout
+      const checkInTime = new Date(session.check_in_2);
+      const checkOutTime = new Date(nowIso);
+      sessionMinutes = Math.floor((checkOutTime.getTime() - checkInTime.getTime()) / 1000 / 60);
+      const previousTotal = session.total_minutes ?? 0;
+      updates = {
+        check_out_2: nowIso,
+        total_minutes: previousTotal + sessionMinutes,
+        latitude,
+        longitude
+      };
+    } else if (session.check_out_1 && session.check_out_2) {
+      return { error: 'Both sessions already checked out for today.' };
+    } else {
+      return { error: 'No active check-in found to check out from.' };
     }
 
-    // 2. Calculate duration
-    const checkInTime = new Date(session.check_in);
-    const checkOutTime = new Date();
-    const durationMs = checkOutTime.getTime() - checkInTime.getTime();
-    const durationMinutes = Math.floor(durationMs / 1000 / 60);
-
-    // 3. Calculate overtime: after 6 PM (18:00)
-    const officeEndTimeMinutes = 18 * 60; // 18:00
-    const currentMinutesAtCheckOut = now.getHours() * 60 + now.getMinutes();
-    let overtimeByMinutes = 0;
-    if (currentMinutesAtCheckOut > officeEndTimeMinutes) {
-      overtimeByMinutes = currentMinutesAtCheckOut - officeEndTimeMinutes;
-    }
-
-    // 4. Update Record
+    // 3. Update Record
     const { error } = await supabase
       .from('attendance')
-      .update({
-        check_out: checkOutTime.toISOString(),
-        total_minutes: durationMinutes,
-        overtime_by: overtimeByMinutes,
-        location_lat: latitude,
-        location_lng: longitude
-      })
+      .update(updates)
       .eq('id', session.id);
 
     if (error) throw error;
 
     revalidatePath('/');
-    return { success: true, message: `Checked out. Total time: ${Math.floor(durationMinutes / 60)}h ${durationMinutes % 60}m` };
+    const totalSoFar = updates.total_minutes as number;
+    return {
+      success: true,
+      message: `Checked out. Session: ${Math.floor(sessionMinutes / 60)}h ${sessionMinutes % 60}m | Total today: ${Math.floor(totalSoFar / 60)}h ${totalSoFar % 60}m`
+    };
 
   } catch (error: any) {
     console.error('Check-out error:', error);
@@ -236,7 +285,7 @@ export async function getTodayStatus() {
 
     // Auto-update weekends for the current month
     const now = getOrgTime();
-    const month = now.getMonth() + 1; // getMonth() is 0-indexed
+    const month = now.getMonth() + 1;
     const year = now.getFullYear();
     await ensureMonthWeekends(month, year);
 
@@ -256,12 +305,11 @@ export async function getTodayStatus() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// NEW: Month-scoped queries for the redesigned Attendance page
+// Month-scoped queries for the Attendance page
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Returns the logged-in user's attendance records for a specific month/year.
- * Sorted date descending (most recent first).
  */
 export async function getMyAttendance(month: number, year: number) {
   try {
@@ -269,9 +317,8 @@ export async function getMyAttendance(month: number, year: number) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return [];
 
-    // Build date range: YYYY-MM-01 to YYYY-MM-last
     const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
-    const endDate = new Date(year, month, 0); // last day of month
+    const endDate = new Date(year, month, 0);
     const endDateStr = `${year}-${String(month).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}`;
 
     const { data, error } = await supabase
@@ -285,8 +332,10 @@ export async function getMyAttendance(month: number, year: number) {
     if (error) throw error;
     return (data || []).map(record => ({
       ...record,
-      check_in_display: record.check_in ? formatTime(record.check_in) : null,
-      check_out_display: record.check_out ? formatTime(record.check_out) : null,
+      check_in_display: record.check_in_1 ? formatTime(record.check_in_1) : null,
+      check_out_display: record.check_out_1 ? formatTime(record.check_out_1) : null,
+      check_in_2_display: record.check_in_2 ? formatTime(record.check_in_2) : null,
+      check_out_2_display: record.check_out_2 ? formatTime(record.check_out_2) : null,
       hours_display: record.total_minutes
         ? `${Math.floor(record.total_minutes / 60)}h ${record.total_minutes % 60}m`
         : null,
@@ -299,7 +348,7 @@ export async function getMyAttendance(month: number, year: number) {
 
 /**
  * Admin/HR only: Returns attendance records for all employees (or a specific one)
- * for a given month/year. Sorted date descending.
+ * for a given month/year.
  */
 export async function getEmployeesAttendance(month: number, year: number, employeeId?: string) {
   try {
@@ -307,7 +356,6 @@ export async function getEmployeesAttendance(month: number, year: number, employ
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return [];
 
-    // Verify the caller is admin or hr
     const { data: profile } = await supabase
       .from('profiles')
       .select('role')
@@ -340,8 +388,10 @@ export async function getEmployeesAttendance(month: number, year: number, employ
       employee_email: (record.profiles as any)?.email || '',
       employee_emp_id: (record.profiles as any)?.emp_id || '',
       employee_designation: (record.profiles as any)?.designation || '',
-      check_in_display: record.check_in ? formatTime(record.check_in) : null,
-      check_out_display: record.check_out ? formatTime(record.check_out) : null,
+      check_in_display: record.check_in_1 ? formatTime(record.check_in_1) : null,
+      check_out_display: record.check_out_1 ? formatTime(record.check_out_1) : null,
+      check_in_2_display: record.check_in_2 ? formatTime(record.check_in_2) : null,
+      check_out_2_display: record.check_out_2 ? formatTime(record.check_out_2) : null,
       hours_display: record.total_minutes
         ? `${Math.floor(record.total_minutes / 60)}h ${record.total_minutes % 60}m`
         : null,
@@ -392,21 +442,13 @@ export async function getAttendanceHistory(userId?: string) {
 
     if (!user) return [];
 
-    // Check role if userId is provided
     let targetUserId = user.id;
     if (userId && userId !== user.id) {
       const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
       if (profile?.role === 'admin' || profile?.role === 'hr') {
         targetUserId = userId;
-      } else {
-        // If not admin/hr, force own ID
-        targetUserId = user.id;
       }
     }
-
-    // If userId is 'all' (special flag) and user is admin/hr, fetch all
-    // But for now let's just support specific user or self
-    // To support 'View All', we need a different query structure or parameter
 
     let query = supabase.from('attendance').select('*, profiles(name, email)');
 
@@ -415,9 +457,7 @@ export async function getAttendanceHistory(userId?: string) {
       if (profile?.role !== 'admin' && profile?.role !== 'hr') {
         query = query.eq('user_id', user.id);
       }
-      // else: fetch all
     } else if (userId) {
-      // Specific user (admin/hr can view anyone, others only self)
       const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
       if (profile?.role === 'admin' || profile?.role === 'hr') {
         query = query.eq('user_id', userId);
@@ -425,7 +465,6 @@ export async function getAttendanceHistory(userId?: string) {
         query = query.eq('user_id', user.id);
       }
     } else {
-      // Default to self
       query = query.eq('user_id', user.id);
     }
 
@@ -437,8 +476,11 @@ export async function getAttendanceHistory(userId?: string) {
       ...record,
       employee_name: (record.profiles as any)?.name || 'Unknown',
       employee_email: (record.profiles as any)?.email || '',
-      check_in: record.check_in ? formatTime(record.check_in) : '--',
-      check_out: record.check_out ? formatTime(record.check_out) : '--',
+      // Map session 1 for backward compat display
+      check_in: record.check_in_1 ? formatTime(record.check_in_1) : '--',
+      check_out: record.check_out_1 ? formatTime(record.check_out_1) : '--',
+      check_in_display: record.check_in_1 ? formatTime(record.check_in_1) : null,
+      check_out_display: record.check_out_1 ? formatTime(record.check_out_1) : null,
       hours_display: record.total_minutes ? `${Math.floor(record.total_minutes / 60)}h ${record.total_minutes % 60}m` : '--',
       total_minutes: record.total_minutes ?? 0,
       ipValid: true,

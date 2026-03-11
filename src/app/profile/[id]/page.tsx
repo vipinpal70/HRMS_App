@@ -3,7 +3,7 @@
 import { useState, useEffect, useTransition } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/app/context/AuthContext';
-import { getProfile, updateProfile, Profile } from '@/app/actions/profile';
+import { getProfile, updateProfile, deleteProfile, Profile } from '@/app/actions/profile';
 import {
     User,
     Mail,
@@ -16,6 +16,7 @@ import {
     ChevronLeft,
     ShieldCheck,
     Palmtree,
+    Trash2,
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
@@ -27,6 +28,7 @@ export default function ProfilePage() {
     const [loading, setLoading] = useState(true);
     const [isEditing, setIsEditing] = useState(false);
     const [isPending, startTransition] = useTransition();
+    const [isDeleting, setIsDeleting] = useState(false);
 
     // Form State
     const [formData, setFormData] = useState({
@@ -69,6 +71,23 @@ export default function ProfilePage() {
                 toast.error(result.error || 'Failed to update profile');
             }
         });
+    };
+
+    const handleDelete = async () => {
+        if (!confirm('Are you sure you want to delete this employee? This action cannot be undone.')) {
+            return;
+        }
+
+        setIsDeleting(true);
+        const result = await deleteProfile(id);
+
+        if (result.success) {
+            toast.success('Profile deleted successfully');
+            router.push('/employees');
+        } else {
+            toast.error(result.error || 'Failed to delete profile');
+            setIsDeleting(false);
+        }
     };
 
     if (loading) {
@@ -125,6 +144,16 @@ export default function ProfilePage() {
                 </div>
 
                 <div className="absolute bottom-4 right-4 flex gap-2">
+                    {currentUser?.role === 'admin' && profile.id !== currentUser.id && !isEditing && (
+                        <button
+                            onClick={handleDelete}
+                            disabled={isDeleting}
+                            className="bg-destructive/10 text-destructive hover:bg-destructive hover:text-destructive-foreground flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors disabled:opacity-50"
+                        >
+                            {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                            Delete Profile
+                        </button>
+                    )}
                     {canEdit && !isEditing && (
                         <button
                             onClick={() => setIsEditing(true)}

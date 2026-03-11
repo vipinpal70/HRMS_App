@@ -34,8 +34,15 @@ const holidayTypeStyles = {
 interface AttendanceRecord {
   id: string;
   date: string;
-  check_in: string | null;
-  check_out: string | null;
+  // Session 1
+  check_in_1: string | null;
+  check_out_1: string | null;
+  // Session 2 (hybrid)
+  check_in_2: string | null;
+  check_out_2: string | null;
+  // Display helpers (from getAttendanceHistory)
+  check_in: string | null;  // backward-compat: formatted check_in_1
+  check_out: string | null; // backward-compat: formatted check_out_1
   check_in_display: string | null;
   check_out_display: string | null;
   hours_display: string | null;
@@ -78,10 +85,15 @@ export default function Dashboard() {
         ]);
 
         if (data) {
-          const isCheckedIn = !!data.check_in && !data.check_out;
+          // Detect if currently checked in: session 2 open takes priority, else session 1
+          const hasActiveSession2 = !!data.check_in_2 && !data.check_out_2;
+          const hasActiveSession1 = !!data.check_in_1 && !data.check_out_1;
+          const isCheckedIn = hasActiveSession2 || hasActiveSession1;
           setCheckedIn(isCheckedIn);
-          if (data.check_in) {
-            setCheckInTime(new Date(data.check_in));
+          if (hasActiveSession2 && data.check_in_2) {
+            setCheckInTime(new Date(data.check_in_2));
+          } else if (hasActiveSession1 && data.check_in_1) {
+            setCheckInTime(new Date(data.check_in_1));
           }
         }
 
@@ -269,8 +281,8 @@ export default function Dashboard() {
   });
 
 
-  // "Present" = total check-ins (any record that has a check_in time)
-  const present = records.filter(r => (r as any).check_in != null).length;
+  // "Present" = total check-ins (any record that has a check_in_1 time)
+  const present = records.filter(r => (r as any).check_in_1 != null).length;
   const totalMin = records.reduce((acc, r) => acc + (r.total_minutes ?? 0), 0);
   const tasksDone = tasks.filter(t => t.status === 'completed').length;
   const totalWorkDays = records.length;

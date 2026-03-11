@@ -1,6 +1,7 @@
 'use server';
 
 import { createClient } from '@/lib/supabase/server';
+import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
 
 export type UserRole = 'emp' | 'admin' | 'hr';
@@ -122,10 +123,11 @@ export async function updateProfile(id: string, updates: Partial<Profile>) {
     }
 }
 
-// Delete employee
-export async function deleteEmployee(id: string) {
+export async function deleteProfile(id: string) {
     try {
         const supabase = await createClient();
+
+        // Check permissions
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return { error: 'Unauthorized' };
 
@@ -135,15 +137,24 @@ export async function deleteEmployee(id: string) {
             .eq('id', user.id)
             .single();
 
-        console.log("user id: ", user.id);
-        console.log("cuurentUserProfile: ", currentUserProfile);
-
         const isAdmin = currentUserProfile?.role === 'admin';
+
         if (!isAdmin) {
-            return { error: 'You do not have permission to delete this employee.' };
+            return { error: 'Only administrators can delete profiles.' };
         }
 
-        const { error } = await supabase
+        // We can't delete ourselves
+        if (user.id === id) {
+            return { error: 'You cannot delete your own profile.' };
+        }
+
+        // Use Supabase Admin client to bypass RLS and avoid recursive policy checks
+        const supabaseAdmin = createAdminClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.SUPABASE_SERVICE_ROLE_KEY!
+        );
+
+        const { error } = await supabaseAdmin
             .from('profiles')
             .delete()
             .eq('id', id);
@@ -151,9 +162,10 @@ export async function deleteEmployee(id: string) {
         if (error) throw error;
 
         revalidatePath('/employees');
-        return { success: true, message: 'Employee deleted successfully.' };
+
+        return { success: true };
     } catch (error: any) {
-        console.error('deleteEmployee Error:', error);
-        return { error: error.message };
+        console.error('deleteProfile Error:', error);
+        return { error: error.message || 'Failed to delete profile' };
     }
 }

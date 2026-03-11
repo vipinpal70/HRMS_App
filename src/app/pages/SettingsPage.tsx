@@ -2,26 +2,27 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { getCompanySettings, updateCompanySettings } from '../actions/settings';
+import { getCompanySettings, updateCompanySettings, updateTotalLeaves, getCurrentTotalLeaves } from '../actions/settings';
 import { toast } from 'react-hot-toast';
-import { Loader2, Shield, MapPin, Wifi, Building2, Clock } from 'lucide-react';
+import { Loader2, Shield, MapPin, Wifi, Building2, Clock, CalendarDays } from 'lucide-react';
 
 export default function SettingsPage() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [settings, setSettings] = useState<any>(null);
   const [saving, setSaving] = useState(false);
-  const [toastr, setToastr] = useState({
-    message: '',
-    type: 'success',
-    show: false
-  });
+  const [totalLeaves, setTotalLeaves] = useState<number>(20);
+  const [savingLeaves, setSavingLeaves] = useState(false);
 
   useEffect(() => {
     async function fetchSettings() {
       try {
-        const data = await getCompanySettings();
+        const [data, currentLeaves] = await Promise.all([
+          getCompanySettings(),
+          getCurrentTotalLeaves(),
+        ]);
         setSettings(data);
+        setTotalLeaves(currentLeaves);
       } catch (error) {
         console.error('Failed to load settings:', error);
       } finally {
@@ -186,6 +187,60 @@ export default function SettingsPage() {
               />
             </div>
           </div>
+        </div>
+
+        {/* Casual Leave Policy */}
+        <div className="stat-card space-y-4">
+          <div className="flex items-center gap-2 mb-2">
+            <CalendarDays className="w-5 h-5 text-info" />
+            <h2 className="text-lg font-semibold">Casual Leave Policy</h2>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Set the total number of casual leaves allocated to every employee per year.
+            Changing this will adjust all employees' leave balances by the difference.
+          </p>
+
+          <div className="flex items-end gap-3">
+            <div className="flex-1 max-w-[200px]">
+              <label className="block text-sm font-medium mb-1">Total Casual Leaves</label>
+              <input
+                type="number"
+                min={0}
+                max={365}
+                value={totalLeaves}
+                onChange={(e) => setTotalLeaves(Number(e.target.value))}
+                disabled={!isAdmin || savingLeaves}
+                className="w-full p-2 border rounded-md bg-background disabled:opacity-50"
+              />
+            </div>
+            {isAdmin && (
+              <button
+                type="button"
+                disabled={savingLeaves}
+                onClick={async () => {
+                  if (totalLeaves < 0 || totalLeaves > 365) {
+                    toast.error('Value must be between 0 and 365.');
+                    return;
+                  }
+                  setSavingLeaves(true);
+                  const result = await updateTotalLeaves(totalLeaves);
+                  if (result.success) {
+                    toast.success(result.message ?? 'Leave quota updated.');
+                  } else {
+                    toast.error(result.error ?? 'Failed to update quota.');
+                  }
+                  setSavingLeaves(false);
+                }}
+                className="flex items-center gap-2 bg-info text-white px-4 py-2 rounded-lg font-medium hover:bg-info/90 transition-colors disabled:opacity-50 text-sm"
+              >
+                {savingLeaves && <Loader2 className="w-4 h-4 animate-spin" />}
+                {savingLeaves ? 'Applying...' : 'Apply to All'}
+              </button>
+            )}
+          </div>
+          {!isAdmin && (
+            <p className="text-xs text-muted-foreground italic">Only administrators can change leave quotas.</p>
+          )}
         </div>
 
         {/* Company Settings */}

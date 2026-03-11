@@ -1,16 +1,18 @@
 "use client";
 
 import { useEffect, useState } from 'react';
-import { Mail, Shield, Loader2, User, Trash } from 'lucide-react';
+import { Mail, Shield, Loader2, User, Trash, Search, X } from 'lucide-react';
 import { Badge } from '../components/ui/badge';
-import { deleteEmployee, getEmployees, Profile } from '@/app/actions/profile';
+import { deleteProfile, getEmployees, Profile } from '@/app/actions/profile';
 import Link from 'next/link';
+
 
 export default function EmployeesPage() {
   const [employees, setEmployees] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     async function load() {
@@ -24,7 +26,7 @@ export default function EmployeesPage() {
   const confirmDelete = async () => {
     if (!confirmDeleteId) return;
     setDeleting(true);
-    const res = await deleteEmployee(confirmDeleteId);
+    const res = await deleteProfile(confirmDeleteId);
     console.log("Delete response:", res);
     if (res.success) {
       setEmployees(employees.filter(emp => emp.id !== confirmDeleteId));
@@ -41,6 +43,17 @@ export default function EmployeesPage() {
     );
   }
 
+  // Client-side search filter: runs against `employees` (the actual data source)
+  const q = searchQuery.trim().toLowerCase();
+  const filteredEmployees = q
+    ? employees.filter(emp =>
+      emp.name?.toLowerCase().includes(q) ||
+      emp.email?.toLowerCase().includes(q) ||
+      emp.emp_id?.toLowerCase().includes(q) ||
+      emp.designation?.toLowerCase().includes(q)
+    )
+    : employees;
+
   return (
     <div className="space-y-6 animate-fade-up">
       <div>
@@ -48,8 +61,30 @@ export default function EmployeesPage() {
         <p className="text-muted-foreground text-sm mt-1">Team overview and status</p>
       </div>
 
+      {/* Search bar */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          placeholder="Search by employee name, email, ID or designation…"
+          className="w-full pl-9 pr-9 py-2.5 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring transition"
+        />
+        {searchQuery && (
+          <button
+            onClick={() => setSearchQuery('')}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+            aria-label="Clear search"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {employees.map((emp) => (
+        {filteredEmployees.map((emp) => (
           <Link
             key={emp.id}
             href={`/profile/${emp.id}`}
@@ -100,10 +135,12 @@ export default function EmployeesPage() {
         ))}
       </div>
 
-      {employees.length === 0 && (
+      {filteredEmployees.length === 0 && (
         <div className="text-center py-12 bg-muted/20 rounded-2xl border border-dashed border-border">
           <User className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
-          <p className="text-muted-foreground">No employees found.</p>
+          <p className="text-muted-foreground">
+            {searchQuery ? `No employees match "${searchQuery}".` : 'No employees found.'}
+          </p>
         </div>
       )}
 

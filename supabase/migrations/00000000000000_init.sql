@@ -12,8 +12,8 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   designation TEXT,
   document_submit BOOLEAN DEFAULT FALSE,
   document_received BOOLEAN DEFAULT FALSE,
-  total_leaves INT DEFAULT 12,
-  remaining_leaves INT DEFAULT 12,
+  total_leaves INT DEFAULT 20,
+  remaining_leaves INT DEFAULT 20,
   add_on_leaves INT DEFAULT 0,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
