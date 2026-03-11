@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useTransition } from 'react';
+import { useState, useEffect, useTransition, useRef } from 'react';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -54,6 +54,28 @@ export default function AppSidebar({
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!userMenuOpen) return;
+
+    const timer = setTimeout(() => {
+      setUserMenuOpen(false);
+    }, 10000);
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setUserMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [userMenuOpen]);
 
   useEffect(() => {
     setMounted(true);
@@ -130,7 +152,10 @@ export default function AppSidebar({
         </nav>
 
         <div className="px-3 py-3 border-t border-sidebar-border">
-          <div className="flex flex-col items-center justify-start gap-2 px-2 py-2 border-sidebar-border relative">
+          <div 
+            ref={userMenuRef}
+            className="flex flex-col items-center justify-start gap-2 px-2 py-2 border-sidebar-border relative"
+          >
             {/* User Menu Popup */}
             {userMenuOpen && (
               <div className={`absolute mb-2 bg-popover text-popover-foreground rounded-xl shadow-2xl border border-border overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-200 z-[60]
