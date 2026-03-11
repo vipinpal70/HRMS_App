@@ -58,6 +58,7 @@ interface AttendanceRecord {
 export default function Dashboard() {
   const { user } = useAuth();
   const [checkedIn, setCheckedIn] = useState(false);
+  const [todayData, setTodayData] = useState<any>(null);
   const [checkInTime, setCheckInTime] = useState<Date | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [ipValid, setIpValid] = useState(true);
@@ -85,6 +86,7 @@ export default function Dashboard() {
         ]);
 
         if (data) {
+          setTodayData(data);
           // Detect if currently checked in: session 2 open takes priority, else session 1
           const hasActiveSession2 = !!data.check_in_2 && !data.check_out_2;
           const hasActiveSession1 = !!data.check_in_1 && !data.check_out_1;
@@ -204,6 +206,9 @@ export default function Dashboard() {
             toast.success('Checked in successfully!');
             setCheckedIn(true);
             setCheckInTime(new Date());
+            // Refresh today's record to get updated work_type/session state
+            const refreshed = await getTodayStatus();
+            if (refreshed) setTodayData(refreshed);
           }
         } catch (error) {
           toast.error('Failed to check in');
@@ -251,6 +256,9 @@ export default function Dashboard() {
         toast.success('Checked out successfully!');
         setCheckedIn(false);
         setCheckInTime(null);
+        // Refresh today's record so office-done state is detected immediately
+        const refreshed = await getTodayStatus();
+        if (refreshed) setTodayData(refreshed);
       }
     } catch (error) {
       toast.error('Failed to check out');
@@ -280,6 +288,13 @@ export default function Dashboard() {
     day: 'numeric',
   });
 
+
+  // Derived: office work type employee who has completed their one allowed session
+  const officeDone =
+    todayData?.work_type === 'office' &&
+    !!todayData?.check_in_1 &&
+    !!todayData?.check_out_1 &&
+    !checkedIn;
 
   // "Present" = total check-ins (any record that has a check_in_1 time)
   const present = records.filter(r => (r as any).check_in_1 != null).length;
@@ -380,26 +395,39 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <Button
-          size="lg"
-          onClick={checkedIn ? handleCheckOut : handleCheckIn}
-          disabled={loading || !isWithinHours}
-          title={!isWithinHours ? `Allowed only between ${formatOfficeTime(officeHours.start)} – ${formatOfficeTime(officeHours.end)}` : undefined}
-          className={
-            !isWithinHours
-              ? 'bg-muted text-muted-foreground cursor-not-allowed'
-              : checkedIn
-                ? 'bg-destructive hover:bg-destructive/90 text-destructive-foreground'
-                : 'bg-success hover:bg-success/90 text-success-foreground'
-          }
-        >
-          {loading ? (
-            <Loader2 className="w-4 h-4 animate-spin mr-2" />
-          ) : (
-            <Clock className="w-4 h-4 mr-2" />
-          )}
-          {checkedIn ? 'Check Out' : 'Check In'}
-        </Button>
+        {officeDone ? (
+          <div className="flex flex-col items-center gap-1">
+            <Button
+              size="lg"
+              className="bg-success hover:bg-success/90 text-success-foreground"
+              onClick={() => toast.error('You cannot check in again.')}
+            >
+              <CheckCircle2 className="w-4 h-4 mr-2" />
+              Check In
+            </Button>
+          </div>
+        ) : (
+          <Button
+            size="lg"
+            onClick={checkedIn ? handleCheckOut : handleCheckIn}
+            disabled={loading || !isWithinHours}
+            title={!isWithinHours ? `Allowed only between ${formatOfficeTime(officeHours.start)} – ${formatOfficeTime(officeHours.end)}` : undefined}
+            className={
+              !isWithinHours
+                ? 'bg-muted text-muted-foreground cursor-not-allowed'
+                : checkedIn
+                  ? 'bg-destructive hover:bg-destructive/90 text-destructive-foreground'
+                  : 'bg-success hover:bg-success/90 text-success-foreground'
+            }
+          >
+            {loading ? (
+              <Loader2 className="w-4 h-4 animate-spin mr-2" />
+            ) : (
+              <Clock className="w-4 h-4 mr-2" />
+            )}
+            {checkedIn ? 'Check Out' : 'Check In'}
+          </Button>
+        )}
       </div>
 
       {/* Office Hours Info */}

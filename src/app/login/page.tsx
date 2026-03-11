@@ -110,9 +110,9 @@ export default function LoginPage() {
             </CardHeader>
             <CardContent>
               <Tabs defaultValue="email" className="w-full">
-                <TabsList className="grid w-full grid-cols-3 mb-4">
+                <TabsList className="grid w-full grid-cols-2 mb-4">
                   <TabsTrigger value="email"><Mail className="w-4 h-4" /></TabsTrigger>
-                  <TabsTrigger value="ip"><Wifi className="w-4 h-4" /></TabsTrigger>
+                  {/* <TabsTrigger value="ip"><Wifi className="w-4 h-4" /></TabsTrigger> */}
                   <TabsTrigger value="gps"><MapPin className="w-4 h-4" /></TabsTrigger>
                 </TabsList>
 
@@ -124,7 +124,7 @@ export default function LoginPage() {
                         id="email"
                         name="email"
                         type="email"
-                        placeholder="m@example.com"
+                        placeholder="user@example.com"
                         required
                         onChange={(e) => setEmail(e.target.value)}
                       />
@@ -132,7 +132,7 @@ export default function LoginPage() {
                     <div className="space-y-2">
                       <Label htmlFor="password">Password</Label>
                       <div className="flex items-center gap-2">
-                        <Input id="password" name="password" type={viewPassword ? "text" : "password"} required />
+                        <Input id="password" name="password" type={viewPassword ? "text" : "password"} placeholder='********' required />
                         <Button type="button" onClick={() => setViewPassword(!viewPassword)} className="w-10 h-10">
                           {viewPassword ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
                         </Button>
@@ -145,7 +145,7 @@ export default function LoginPage() {
                   </form>
                 </TabsContent>
 
-                <TabsContent value="ip">
+                {/* <TabsContent value="ip">
                   <div className="space-y-4 text-center">
                     <div className="p-4 bg-blue-50 text-blue-700 rounded-lg text-sm">
                       One-Tap Login using your Office Wi-Fi/Network.
@@ -165,7 +165,7 @@ export default function LoginPage() {
                       {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Login with IP'}
                     </Button>
                   </div>
-                </TabsContent>
+                </TabsContent> */}
 
                 <TabsContent value="gps">
                   <div className="space-y-4 text-center">
@@ -177,7 +177,7 @@ export default function LoginPage() {
                       <Input
                         id="gps-email"
                         type="email"
-                        placeholder="m@example.com"
+                        placeholder="user@example.com"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                       />
@@ -211,11 +211,16 @@ export default function LoginPage() {
                 </div>
                 <div className="space-y-1">
                   <Label htmlFor="signup-email">Email</Label>
-                  <Input id="signup-email" name="email" type="email" placeholder="m@example.com" required />
+                  <Input id="signup-email" name="email" type="email" placeholder="user@example.com" required />
                 </div>
                 <div className="space-y-1">
                   <Label htmlFor="signup-password">Password</Label>
-                  <Input id="signup-password" name="password" type="password" required />
+                  <div className="flex items-center gap-2">
+                    <Input id="signup-password" name="password" type={viewPassword ? "text" : "password"} placeholder='********' required />
+                    <Button type="button" onClick={() => setViewPassword(!viewPassword)} className="w-10 h-10">
+                      {viewPassword ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                    </Button>
+                  </div>
                 </div>
                 {error && <p className="text-sm text-red-500">{error}</p>}
               </CardContent>

@@ -115,7 +115,7 @@ export async function checkIn(latitude: number, longitude: number) {
       .eq('date', today)
       .single();
 
-    // 2. Enforce max 2 check-ins per day
+    // 2. Enforce check-in limits per work_type
     if (existing) {
       if (existing.check_in_1 && existing.check_in_2) {
         return { error: 'Maximum 2 check-ins per day already reached.' };
@@ -123,6 +123,10 @@ export async function checkIn(latitude: number, longitude: number) {
       // For a second check-in, the first session must be closed (check_out_1 set)
       if (existing.check_in_1 && !existing.check_out_1) {
         return { error: 'Please check out from your current session before starting a new one.' };
+      }
+      // Office work type: only 1 check-in/check-out allowed per day
+      if (existing.work_type === 'office' && existing.check_in_1 && existing.check_out_1) {
+        return { error: 'You cannot check in again.' };
       }
     }
 
@@ -305,6 +309,106 @@ export async function getTodayStatus() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Absent-marking helper
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Builds a list of synthetic "absent" / "half_day" records for working days
+ * in [startDate, endDate] where the employee either:
+ *   a) has an approved 'leave' (full-day) or 'halfday' leave request, OR
+ *   b) has no attendance record at all.
+ * Weekends, company holidays, today, and future dates are never marked absent.
+ */
+async function buildAbsentDays(
+  supabase: any,
+  userId: string,
+  startDate: string,
+  endDate: string,
+  existingDates: Set<string>,      // dates that already have an attendance row
+  employeeMeta?: {                 // extra fields needed for admin view
+    employee_name: string;
+    employee_email: string;
+    employee_emp_id: string;
+    employee_designation: string;
+    user_id: string;
+  }
+): Promise<any[]> {
+  const todayStr = new Date().toISOString().split('T')[0]; // never mark today absent
+
+  // 1. Fetch non-working calendar days (weekends + holidays) in range
+  const { data: calDays } = await supabase
+    .from('company_calendar')
+    .select('date, type')
+    .gte('date', startDate)
+    .lte('date', endDate)
+    .in('type', ['weekend', 'holiday']);
+
+  const nonWorkingDates = new Set<string>(
+    (calDays || []).map((d: any) => d.date as string)
+  );
+
+  // 2. Fetch approved 'leave' and 'halfday' requests for user in range
+  const { data: leaves } = await supabase
+    .from('leave_requests')
+    .select('category, start_day, end_day')
+    .eq('user_id', userId)
+    .eq('status', 'approved')
+    .in('category', ['leave', 'halfday'])
+    .lte('start_day', endDate)
+    .gte('end_day', startDate);
+
+  // Build date → leave-status map from leave ranges
+  const leaveMap = new Map<string, 'absent' | 'half_day'>();
+  for (const lv of leaves || []) {
+    const cur = new Date(lv.start_day + 'T00:00:00');
+    const end = new Date(lv.end_day + 'T00:00:00');
+    while (cur <= end) {
+      const ds = cur.toISOString().split('T')[0];
+      leaveMap.set(ds, lv.category === 'halfday' ? 'half_day' : 'absent');
+      cur.setDate(cur.getDate() + 1);
+    }
+  }
+
+  // 3. Iterate every calendar day in [startDate, endDate]
+  const result: any[] = [];
+  const cur = new Date(startDate + 'T00:00:00');
+  const end = new Date(endDate + 'T00:00:00');
+
+  while (cur <= end) {
+    const ds = cur.toISOString().split('T')[0];
+    cur.setDate(cur.getDate() + 1);
+
+    if (ds >= todayStr) continue;          // skip today and future
+    if (nonWorkingDates.has(ds)) continue; // skip weekends & holidays
+    if (existingDates.has(ds)) continue;   // already has a real attendance row
+
+    const absentStatus = leaveMap.get(ds) ?? 'absent';
+
+    result.push({
+      id: `absent-${userId}-${ds}`,
+      user_id: userId,
+      date: ds,
+      check_in_1: null,
+      check_out_1: null,
+      check_in_2: null,
+      check_out_2: null,
+      check_in_display: null,
+      check_out_display: null,
+      check_in_2_display: null,
+      check_out_2_display: null,
+      hours_display: null,
+      total_minutes: 0,
+      status: absentStatus,
+      work_type: null,
+      present: false,
+      ...(employeeMeta ?? {}),
+    });
+  }
+
+  return result;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Month-scoped queries for the Attendance page
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -321,6 +425,9 @@ export async function getMyAttendance(month: number, year: number) {
     const endDate = new Date(year, month, 0);
     const endDateStr = `${year}-${String(month).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}`;
 
+    // Ensure weekends are in company_calendar so absent-marking skips them
+    await ensureMonthWeekends(month, year);
+
     const { data, error } = await supabase
       .from('attendance')
       .select('*')
@@ -330,7 +437,8 @@ export async function getMyAttendance(month: number, year: number) {
       .order('date', { ascending: false });
 
     if (error) throw error;
-    return (data || []).map(record => ({
+
+    const realRecords = (data || []).map(record => ({
       ...record,
       check_in_display: record.check_in_1 ? formatTime(record.check_in_1) : null,
       check_out_display: record.check_out_1 ? formatTime(record.check_out_1) : null,
@@ -340,6 +448,12 @@ export async function getMyAttendance(month: number, year: number) {
         ? `${Math.floor(record.total_minutes / 60)}h ${record.total_minutes % 60}m`
         : null,
     }));
+
+    // Merge synthetic absent rows for days with no check-in
+    const existingDates = new Set(realRecords.map((r: any) => r.date as string));
+    const absentRows = await buildAbsentDays(supabase, user.id, startDate, endDateStr, existingDates);
+
+    return [...realRecords, ...absentRows].sort((a, b) => b.date.localeCompare(a.date));
   } catch (error) {
     console.error('Error in getMyAttendance:', error);
     return [];
@@ -368,6 +482,9 @@ export async function getEmployeesAttendance(month: number, year: number, employ
     const endDate = new Date(year, month, 0);
     const endDateStr = `${year}-${String(month).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}`;
 
+    // Ensure weekends are in company_calendar so absent-marking skips them
+    await ensureMonthWeekends(month, year);
+
     let query = supabase
       .from('attendance')
       .select('*, profiles(id, name, email, emp_id, designation)')
@@ -382,7 +499,7 @@ export async function getEmployeesAttendance(month: number, year: number, employ
     const { data, error } = await query;
     if (error) throw error;
 
-    return (data || []).map(record => ({
+    const realRecords = (data || []).map(record => ({
       ...record,
       employee_name: (record.profiles as any)?.name || 'Unknown',
       employee_email: (record.profiles as any)?.email || '',
@@ -396,6 +513,58 @@ export async function getEmployeesAttendance(month: number, year: number, employ
         ? `${Math.floor(record.total_minutes / 60)}h ${record.total_minutes % 60}m`
         : null,
     }));
+
+    // Build absent rows per employee
+    // Group real records by user_id to know which dates are already covered
+    const recordsByUser = new Map<string, { dates: Set<string>; meta: any }>();
+    for (const r of realRecords) {
+      if (!recordsByUser.has(r.user_id)) {
+        recordsByUser.set(r.user_id, {
+          dates: new Set(),
+          meta: {
+            user_id: r.user_id,
+            employee_name: r.employee_name,
+            employee_email: r.employee_email,
+            employee_emp_id: r.employee_emp_id,
+            employee_designation: r.employee_designation,
+          }
+        });
+      }
+      recordsByUser.get(r.user_id)!.dates.add(r.date);
+    }
+
+    // If filtering by a specific employee who has zero records this month,
+    // we still need to generate their absent rows — fetch their profile.
+    if (employeeId && employeeId !== 'all' && !recordsByUser.has(employeeId)) {
+      const { data: empProfile } = await supabase
+        .from('profiles')
+        .select('id, name, email, emp_id, designation')
+        .eq('id', employeeId)
+        .single();
+
+      if (empProfile) {
+        recordsByUser.set(employeeId, {
+          dates: new Set(),
+          meta: {
+            user_id: employeeId,
+            employee_name: empProfile.name || 'Unknown',
+            employee_email: empProfile.email || '',
+            employee_emp_id: empProfile.emp_id || '',
+            employee_designation: empProfile.designation || '',
+          }
+        });
+      }
+    }
+
+    // Generate absent rows for each employee in parallel
+    const absentRowArrays = await Promise.all(
+      Array.from(recordsByUser.entries()).map(([uid, { dates, meta }]) =>
+        buildAbsentDays(supabase, uid, startDate, endDateStr, dates, meta)
+      )
+    );
+    const allAbsentRows = absentRowArrays.flat();
+
+    return [...realRecords, ...allAbsentRows].sort((a, b) => b.date.localeCompare(a.date));
   } catch (error) {
     console.error('Error in getEmployeesAttendance:', error);
     return [];
