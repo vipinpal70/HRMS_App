@@ -218,8 +218,17 @@ export async function updateTask(taskId: string, formData: FormData) {
     if (!user) return { error: 'Unauthorized' };
 
     const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
-    if (profile?.role !== 'admin' && profile?.role !== 'hr') {
-      return { error: 'Only Admins/HR can edit tasks.' };
+    const isAdminOrHR = profile?.role === 'admin' || profile?.role === 'hr';
+
+    if (!isAdminOrHR) {
+      // Employee: can only edit own tasks
+      const { data: task, error: fetchError } = await supabase.from('tasks').select('assigned_to').eq('id', taskId).maybeSingle();
+      if (fetchError || !task) {
+        return { error: 'Task not found.' };
+      }
+      if (task.assigned_to !== user.id) {
+        return { error: 'You can only edit your own tasks.' };
+      }
     }
 
     const updates: Record<string, any> = {
@@ -253,6 +262,34 @@ export async function updateTask(taskId: string, formData: FormData) {
     return { success: true, message: 'Task updated successfully.' };
   } catch (error: any) {
     console.error('Update task error:', error);
+    return { error: error.message };
+  }
+}
+
+export async function deleteTask(taskId: string) {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) return { error: 'Unauthorized' };
+
+    const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
+    // Only Admins can delete tasks
+    if (profile?.role !== 'admin') {
+      return { error: 'Only Admins can delete tasks.' };
+    }
+
+    const { error } = await supabase
+      .from('tasks')
+      .delete()
+      .eq('id', taskId);
+
+    if (error) throw error;
+
+    revalidatePath('/tasks');
+    return { success: true, message: 'Task deleted successfully.' };
+  } catch (error: any) {
+    console.error('Delete task error:', error);
     return { error: error.message };
   }
 }

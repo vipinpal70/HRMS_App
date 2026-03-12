@@ -50,7 +50,7 @@ export default function ProfilePage() {
                     name: data.name || '',
                     designation: data.designation || '',
                     phone: data.phone || '',
-                    total_leaves: data.total_leaves ?? 12,
+                    total_leaves: data.total_leaves ?? 20,
                     add_on_leaves: data.add_on_leaves ?? 0,
                 });
             }

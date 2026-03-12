@@ -19,7 +19,7 @@ import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Progress } from '../components/ui/progress';
 import { Calendar } from '../components/ui/calendar';
-import { getTodayStatus, checkIn, checkOut, getAttendanceHistory } from '../actions/attendance';
+import { getTodayStatus, checkIn, checkOut, getAttendanceHistory, getEffectiveWorkType } from '../actions/attendance';
 import { getYearHolidays } from '../actions/calendar';
 import { getTasks } from '../actions/tasks';
 import { getQuoteOfDay } from '../actions/quotes';
@@ -73,16 +73,18 @@ export default function Dashboard() {
   const [quote, setQuote] = useState<{ q: string; a: string } | null>(null);
   const [currentYear] = useState(new Date().getFullYear());
   const [holidays, setHolidays] = useState<{ date: Date; label: string; type: 'holiday' | 'event' }[]>([]);
+  const [effectiveWorkType, setEffectiveWorkType] = useState<'office' | 'wfh' | 'hybrid' | 'leave' | 'halfday'>('office');
 
   // Fetch initial status + office hours
   useEffect(() => {
     async function fetchStatus() {
       try {
-        const [data, settings, history, tasklist] = await Promise.all([
+        const [data, settings, history, tasklist, workType] = await Promise.all([
           getTodayStatus(),
           getCompanySettings(),
           getAttendanceHistory(),
-          getTasks()
+          getTasks(),
+          getEffectiveWorkType()
         ]);
 
         if (data) {
@@ -111,6 +113,10 @@ export default function Dashboard() {
 
         if (tasklist) {
           setTasks(tasklist);
+        }
+
+        if (workType) {
+          setEffectiveWorkType(workType as any);
         }
       } catch (error) {
         console.error('Error fetching status:', error);
@@ -209,6 +215,9 @@ export default function Dashboard() {
             // Refresh today's record to get updated work_type/session state
             const refreshed = await getTodayStatus();
             if (refreshed) setTodayData(refreshed);
+            // Also refresh effective work type in case a leave was just approved (less likely but good for consistency)
+            const workType = await getEffectiveWorkType();
+            if (workType) setEffectiveWorkType(workType as any);
           }
         } catch (error) {
           toast.error('Failed to check in');
@@ -410,10 +419,16 @@ export default function Dashboard() {
           <Button
             size="lg"
             onClick={checkedIn ? handleCheckOut : handleCheckIn}
-            disabled={loading || !isWithinHours}
-            title={!isWithinHours ? `Allowed only between ${formatOfficeTime(officeHours.start)} – ${formatOfficeTime(officeHours.end)}` : undefined}
+            disabled={loading || (effectiveWorkType === 'office' && !isWithinHours) || effectiveWorkType === 'leave'}
+            title={
+              effectiveWorkType === 'leave'
+                ? 'You are on approved leave today.'
+                : (effectiveWorkType === 'office' && !isWithinHours)
+                  ? `Allowed only between ${formatOfficeTime(officeHours.start)} – ${formatOfficeTime(officeHours.end)}`
+                  : undefined
+            }
             className={
-              !isWithinHours
+              (effectiveWorkType === 'office' && !isWithinHours) || effectiveWorkType === 'leave'
                 ? 'bg-muted text-muted-foreground cursor-not-allowed'
                 : checkedIn
                   ? 'bg-destructive hover:bg-destructive/90 text-destructive-foreground'
@@ -438,7 +453,9 @@ export default function Dashboard() {
         <Clock className="w-4 h-4" />
         <span>
           Office hours: <strong>{formatOfficeTime(officeHours.start)} – {formatOfficeTime(officeHours.end)}</strong>
-          {!isWithinHours && ' — Check-in/out is currently unavailable'}
+          {effectiveWorkType === 'leave' && ' — You are on approved leave today'}
+          {(!isWithinHours && effectiveWorkType === 'office') && ' — Check-in/out is currently unavailable'}
+          {(!isWithinHours && effectiveWorkType !== 'office' && effectiveWorkType !== 'leave') && ' — Check-in/out remains available for your approved work type'}
         </span>
       </div>
 

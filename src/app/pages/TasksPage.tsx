@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { Plus, CheckCircle2, Clock, Circle, Search, Users, Calendar as CalendarIcon, Loader2, XCircle, Check, ChevronsUpDown } from 'lucide-react';
+import { Plus, CheckCircle2, Clock, Circle, Search, Users, Calendar as CalendarIcon, Loader2, XCircle, Check, ChevronsUpDown, Edit2, Trash2 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Progress } from '../components/ui/progress';
@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '../components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
 import { useAuth } from '../context/AuthContext';
-import { getTasks, createTask, getEmployeesList, updateTaskStatus, createSelfTask, checkAndNotifyNoTasks } from '../actions/tasks';
+import { getTasks, createTask, getEmployeesList, updateTaskStatus, createSelfTask, checkAndNotifyNoTasks, updateTask, deleteTask } from '../actions/tasks';
 import { toast } from 'react-hot-toast';
 import { useTransition } from 'react';
 import { cn } from '@/lib/utils';
@@ -30,6 +30,7 @@ interface Task {
   due_date?: string;
   assignee_name?: string;
   assignee_email?: string;
+  assignee_id?: string;
   created_at: string;
 }
 
@@ -73,6 +74,12 @@ export default function TasksPage() {
   // Employee self-add dialog
   const [isSelfAddOpen, setIsSelfAddOpen] = useState(false);
   const [selfSaving, setSelfSaving] = useState(false);
+
+  // Edit/Delete Task State
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
 
   // Date Range State (default: current month)
   const getMonthDates = () => {
@@ -158,6 +165,57 @@ export default function TasksPage() {
       toast.error(result.error || 'Failed to add task.');
     }
     setSelfSaving(false);
+  };
+
+  const handleEditTaskClick = (task: Task) => {
+    setEditingTask(task);
+    if (task.assignee_id) setSelectedAssigneeIds([task.assignee_id]);
+    setIsEditOpen(true);
+  };
+
+  const handleUpdateTask = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!editingTask) return;
+
+    // Admin/HR might need to assign, employees might not see the combobox.
+    // If the combobox was used, selectedAssigneeIds is set. Otherwise, fallback to existing task assignee.
+    const finalAssigneeId = selectedAssigneeIds[0] || editingTask.assignee_id || user?.id;
+
+    if (!finalAssigneeId) {
+      toast.error('Task must have an assignee.');
+      return;
+    }
+
+    setSaving(true);
+    const formData = new FormData(e.currentTarget);
+    formData.set('assigned_to', finalAssigneeId);
+
+    const result = await updateTask(editingTask.id, formData);
+
+    if (result.success) {
+      toast.success(result.message);
+      setIsEditOpen(false);
+      setEditingTask(null);
+      fetchTasks();
+    } else {
+      toast.error(result.error || 'Failed to update task.');
+    }
+    setSaving(false);
+  };
+
+  const confirmDeleteTask = async () => {
+    if (!deletingTaskId) return;
+    setSaving(true);
+    const result = await deleteTask(deletingTaskId);
+    if (result.success) {
+      toast.success(result.message);
+      setIsDeleteDialogOpen(false);
+      setDeletingTaskId(null);
+      fetchTasks();
+    } else {
+      toast.error(result.error || 'Failed to delete task.');
+    }
+    setSaving(false);
   };
 
   const toggleAssignee = (id: string) => {
@@ -481,34 +539,37 @@ export default function TasksPage() {
                 className="flex flex-col sm:flex-row sm:items-center gap-4 p-4 rounded-lg border border-border bg-card hover:shadow-md transition-all"
               >
                 <div className="flex-1">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <h3 className={`font-semibold text-lg ${task.status === 'completed' ? 'line-through text-muted-foreground' : ''}`}>
-                        {task.title}
-                      </h3>
-                      {task.description && <p className="text-sm text-muted-foreground mt-1">{task.description}</p>}
-                    </div>
+                  <div>
+                    {/* Status Dropdown */}
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <h3 className={`font-semibold text-lg ${task.status === 'completed' ? 'line-through text-muted-foreground' : ''}`}>
+                          {task.title}
+                        </h3>
+                        {task.description && <p className="text-sm text-muted-foreground mt-1">{task.description}</p>}
+                      </div>
 
-                    <div className="w-40">
-                      <Select
-                        value={task.status}
-                        onValueChange={(val) => handleStatusChange(task.id, val)}
-                        disabled={isPending}
-                      >
-                        <SelectTrigger className={cn(
-                          "h-8 text-xs font-medium",
-                          task.status === 'completed' && "bg-success/10 text-success border-success/20",
-                          task.status === 'in_progress' && "bg-info/10 text-info border-info/20",
-                          task.status === 'pending' && "bg-muted text-muted-foreground border-border"
-                        )}>
-                          <SelectValue placeholder="Status" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="pending">Pending</SelectItem>
-                          <SelectItem value="in_progress">In Progress</SelectItem>
-                          <SelectItem value="completed">Completed</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <div className="w-40">
+                        <Select
+                          value={task.status}
+                          onValueChange={(val) => handleStatusChange(task.id, val)}
+                          disabled={isPending}
+                        >
+                          <SelectTrigger className={cn(
+                            "h-8 text-xs font-medium",
+                            task.status === 'completed' && "bg-success/10 text-success border-success/20",
+                            task.status === 'in_progress' && "bg-info/10 text-info border-info/20",
+                            task.status === 'pending' && "bg-muted text-muted-foreground border-border"
+                          )}>
+                            <SelectValue placeholder="Status" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="pending">Pending</SelectItem>
+                            <SelectItem value="in_progress">In Progress</SelectItem>
+                            <SelectItem value="completed">Completed</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
                   </div>
 
@@ -529,11 +590,157 @@ export default function TasksPage() {
                     </div>
                   </div>
                 </div>
+
+                {/* Actions */}
+                <div className="flex gap-2 shrink-0">
+                  {(canManageTasks || task.assignee_id === user?.id) && (
+                    <button
+                      className='hover:bg-muted-foreground/20 p-1 rounded-lg w-10 h-10 flex items-center justify-center'
+                      onClick={() => handleEditTaskClick(task)}
+                      title="Edit Task"
+                    >
+                      <Edit2 className="w-4 h-4 text-muted-foreground hover:text-foreground" />
+                    </button>
+                  )}
+                  {user?.role === 'admin' && (
+                    <button
+                      onClick={() => {
+                        setDeletingTaskId(task.id);
+                        setIsDeleteDialogOpen(true);
+                      }}
+                      className='hover:bg-destructive/20 p-1 rounded-lg w-10 h-10 flex items-center justify-center'
+                      title="Delete Task"
+                    >
+                      <Trash2 className="w-4 h-4 text-destructive hover:text-destructive/80" />
+                    </button>
+                  )}
+                </div>
               </div>
             );
           })
         )}
       </div>
+
+      {/* Edit Task Dialog */}
+      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Edit Task</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleUpdateTask} className="space-y-4 mt-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-title">Task Title</Label>
+              <Input id="edit-title" name="title" required defaultValue={editingTask?.title || ''} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-description">Description</Label>
+              <Textarea id="edit-description" name="description" defaultValue={editingTask?.description || ''} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-priority">Priority</Label>
+                <Select name="priority" defaultValue={editingTask?.priority || 'medium'}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select priority" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="low">Low</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="high">High</SelectItem>
+                    <SelectItem value="critical">Critical</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {canManageTasks && (
+                <div className="space-y-2 flex flex-col">
+                  <Label htmlFor="edit_assigned_to">Assignee (Single for Edit)</Label>
+                  <Popover open={openAssignee} onOpenChange={setOpenAssignee}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={openAssignee}
+                        className="w-full justify-between font-normal"
+                      >
+                        {selectedAssigneeIds.length > 0
+                          ? employees.find(e => e.id === selectedAssigneeIds[0])?.name || "Employee Selected"
+                          : "Select employee..."}
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[300px] p-0" align="start">
+                      <Command>
+                        <CommandInput placeholder="Search employee..." />
+                        <CommandList>
+                          <CommandEmpty>No employee found.</CommandEmpty>
+                          <CommandGroup>
+                            {employees.map((emp) => (
+                              <CommandItem
+                                key={emp.id}
+                                value={emp.name || emp.email}
+                                onSelect={() => {
+                                  setSelectedAssigneeIds([emp.id]);
+                                  setOpenAssignee(false);
+                                }}
+                              >
+                                <div className={cn(
+                                  "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border border-primary",
+                                  selectedAssigneeIds.includes(emp.id)
+                                    ? "bg-primary text-primary-foreground"
+                                    : "opacity-50 [&_svg]:invisible"
+                                )}>
+                                  <Check className="h-3 w-3" />
+                                </div>
+                                {emp.name || emp.email} ({emp.role})
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-start_day">Start Date</Label>
+                <Input id="edit-start_day" name="start_day" type="date" defaultValue={editingTask?.start_day || ''} required />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-end_day">End Date</Label>
+                <Input id="edit-end_day" name="end_day" type="date" defaultValue={editingTask?.end_day || ''} required />
+              </div>
+            </div>
+            <DialogFooter className="mt-6">
+              <Button type="button" variant="outline" onClick={() => setIsEditOpen(false)}>Cancel</Button>
+              <Button type="submit" disabled={saving}>
+                {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                {saving ? 'Saving...' : 'Save Changes'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>Delete Task</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-sm text-muted-foreground">Are you sure you want to delete this task? This action cannot be undone.</p>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setIsDeleteDialogOpen(false)}>Cancel</Button>
+            <Button variant="destructive" onClick={confirmDeleteTask} disabled={saving}>
+              {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              {saving ? 'Deleting...' : 'Delete Task'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

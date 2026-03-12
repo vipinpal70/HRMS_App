@@ -152,7 +152,7 @@ export default function AppSidebar({
         </nav>
 
         <div className="px-3 py-3 border-t border-sidebar-border">
-          <div 
+          <div
             ref={userMenuRef}
             className="flex flex-col items-center justify-start gap-2 px-2 py-2 border-sidebar-border relative"
           >
@@ -256,7 +256,7 @@ export default function AppSidebar({
             className="absolute right-1 top-1/2 -translate-y-1/2 bg-sidebar-accent border border-sidebar-border rounded-full p-1 shadow-md hover:bg-sidebar-accent transition-all duration-200 z-[70] hover:scale-110 active:scale-95"
             title={collapsed ? "Expand" : "Collapse"}
           >
-            {collapsed ? <ChevronRight className="w-5 h-5 text-amber-600" /> : <ChevronLeft className="w-5 h-5 text-amber-600" />}
+            {collapsed ? <ChevronRight className="w-3 h-3 text-amber-500" /> : <ChevronLeft className="w-5 h-5 text-amber-500" />}
           </button>
         </div>
       </aside >

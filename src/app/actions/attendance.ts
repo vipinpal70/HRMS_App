@@ -68,13 +68,13 @@ async function getSettings(supabase: any) {
 }
 
 // Helper: check if employee has an approved WFH or Hybrid leave for a given date
-async function getApprovedLeaveForDate(supabase: any, userId: string, date: string) {
+export async function getApprovedLeaveForDate(supabase: any, userId: string, date: string) {
   const { data } = await supabase
     .from('leave_requests')
     .select('id, category')
     .eq('user_id', userId)
     .eq('status', 'approved')
-    .in('category', ['wfh', 'hybrid'])
+    .in('category', ['leave', 'halfday', 'wfh', 'hybrid'])
     .lte('start_day', date)
     .gte('end_day', date)
     .limit(1)
@@ -136,8 +136,12 @@ export async function checkIn(latitude: number, longitude: number) {
     let workType: string;
 
     if (approval) {
-      // Approved WFH or Hybrid — allow from anywhere, no office hours restriction
-      workType = approval.category; // 'wfh' or 'hybrid'
+      // If full-day leave, block check-in entirely
+      if (approval.category === 'leave') {
+        return { error: 'You are on approved leave today. Check-in is disabled.' };
+      }
+      // Approved WFH, Hybrid, or Half-day — allow from anywhere, no office hours restriction
+      workType = approval.category; // 'wfh' or 'hybrid' or 'halfday'
     } else {
       // No approval — must be in office: enforce office hours
       if (!isWithinOfficeHours(now, settings.start, settings.end)) {
@@ -308,6 +312,31 @@ export async function getTodayStatus() {
   }
 }
 
+/**
+ * Returns the effective work_type for the logged-in user for TODAY.
+ * If they have an approved WFH/Hybrid leave, it returns that category.
+ * Otherwise, it returns 'office'.
+ */
+export async function getEffectiveWorkType() {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return 'office';
+
+    const today = getOrgDateString();
+    const approval = await getApprovedLeaveForDate(supabase, user.id, today);
+
+    if (approval) {
+      return approval.category as 'wfh' | 'hybrid' | 'office';
+    }
+
+    return 'office';
+  } catch (error) {
+    console.error('Error fetching effective work type:', error);
+    return 'office';
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Absent-marking helper
 // ─────────────────────────────────────────────────────────────────────────────
@@ -324,7 +353,8 @@ async function buildAbsentDays(
   userId: string,
   startDate: string,
   endDate: string,
-  existingDates: Set<string>,      // dates that already have an attendance row
+  joiningDate: string,           // 'YYYY-MM-DD' Joining date (no absent marking before this)
+  existingDates: Set<string>,    // dates that already have an attendance row
   employeeMeta?: {                 // extra fields needed for admin view
     employee_name: string;
     employee_email: string;
@@ -333,7 +363,7 @@ async function buildAbsentDays(
     user_id: string;
   }
 ): Promise<any[]> {
-  const todayStr = new Date().toISOString().split('T')[0]; // never mark today absent
+  const todayStr = getOrgDateString(); // use org timezone for "today"
 
   // 1. Fetch non-working calendar days (weekends + holidays) in range
   const { data: calDays } = await supabase
@@ -360,8 +390,10 @@ async function buildAbsentDays(
   // Build date → leave-status map from leave ranges
   const leaveMap = new Map<string, 'absent' | 'half_day'>();
   for (const lv of leaves || []) {
-    const cur = new Date(lv.start_day + 'T00:00:00');
-    const end = new Date(lv.end_day + 'T00:00:00');
+    // start_day/end_day are 'YYYY-MM-DD'. 
+    // new Date('YYYY-MM-DD') parses as UTC which is safe for date iteration.
+    const cur = new Date(lv.start_day);
+    const end = new Date(lv.end_day);
     while (cur <= end) {
       const ds = cur.toISOString().split('T')[0];
       leaveMap.set(ds, lv.category === 'halfday' ? 'half_day' : 'absent');
@@ -371,14 +403,17 @@ async function buildAbsentDays(
 
   // 3. Iterate every calendar day in [startDate, endDate]
   const result: any[] = [];
-  const cur = new Date(startDate + 'T00:00:00');
-  const end = new Date(endDate + 'T00:00:00');
+  const cur = new Date(startDate);
+  const end = new Date(endDate);
 
   while (cur <= end) {
     const ds = cur.toISOString().split('T')[0];
     cur.setDate(cur.getDate() + 1);
+    const hasLeaveToday = leaveMap.has(ds);
 
-    if (ds >= todayStr) continue;          // skip today and future
+    if (ds > todayStr) continue;          // skip future
+    if (ds === todayStr && !hasLeaveToday) continue; // skip today ONLY IF no leave (allow today's approved leave to show)
+    if (ds < joiningDate) continue;        // skip dates before joining
     if (nonWorkingDates.has(ds)) continue; // skip weekends & holidays
     if (existingDates.has(ds)) continue;   // already has a real attendance row
 
@@ -428,6 +463,14 @@ export async function getMyAttendance(month: number, year: number) {
     // Ensure weekends are in company_calendar so absent-marking skips them
     await ensureMonthWeekends(month, year);
 
+    // Fetch user's joining date (created_at)
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('created_at')
+      .eq('id', user.id)
+      .single();
+    const joiningDate = profile?.created_at ? profile.created_at.split('T')[0] : '1970-01-01';
+
     const { data, error } = await supabase
       .from('attendance')
       .select('*')
@@ -451,7 +494,7 @@ export async function getMyAttendance(month: number, year: number) {
 
     // Merge synthetic absent rows for days with no check-in
     const existingDates = new Set(realRecords.map((r: any) => r.date as string));
-    const absentRows = await buildAbsentDays(supabase, user.id, startDate, endDateStr, existingDates);
+    const absentRows = await buildAbsentDays(supabase, user.id, startDate, endDateStr, joiningDate, existingDates);
 
     return [...realRecords, ...absentRows].sort((a, b) => b.date.localeCompare(a.date));
   } catch (error) {
@@ -487,7 +530,7 @@ export async function getEmployeesAttendance(month: number, year: number, employ
 
     let query = supabase
       .from('attendance')
-      .select('*, profiles(id, name, email, emp_id, designation)')
+      .select('*, profiles(id, name, email, emp_id, designation, created_at)')
       .gte('date', startDate)
       .lte('date', endDateStr)
       .order('date', { ascending: false });
@@ -505,6 +548,7 @@ export async function getEmployeesAttendance(month: number, year: number, employ
       employee_email: (record.profiles as any)?.email || '',
       employee_emp_id: (record.profiles as any)?.emp_id || '',
       employee_designation: (record.profiles as any)?.designation || '',
+      created_at: (record.profiles as any)?.created_at,
       check_in_display: record.check_in_1 ? formatTime(record.check_in_1) : null,
       check_out_display: record.check_out_1 ? formatTime(record.check_out_1) : null,
       check_in_2_display: record.check_in_2 ? formatTime(record.check_in_2) : null,
@@ -527,6 +571,7 @@ export async function getEmployeesAttendance(month: number, year: number, employ
             employee_email: r.employee_email,
             employee_emp_id: r.employee_emp_id,
             employee_designation: r.employee_designation,
+            created_at: r.created_at,
           }
         });
       }
@@ -538,7 +583,7 @@ export async function getEmployeesAttendance(month: number, year: number, employ
     if (employeeId && employeeId !== 'all' && !recordsByUser.has(employeeId)) {
       const { data: empProfile } = await supabase
         .from('profiles')
-        .select('id, name, email, emp_id, designation')
+        .select('id, name, email, emp_id, designation, created_at')
         .eq('id', employeeId)
         .single();
 
@@ -551,6 +596,7 @@ export async function getEmployeesAttendance(month: number, year: number, employ
             employee_email: empProfile.email || '',
             employee_emp_id: empProfile.emp_id || '',
             employee_designation: empProfile.designation || '',
+            created_at: empProfile.created_at,
           }
         });
       }
@@ -558,9 +604,10 @@ export async function getEmployeesAttendance(month: number, year: number, employ
 
     // Generate absent rows for each employee in parallel
     const absentRowArrays = await Promise.all(
-      Array.from(recordsByUser.entries()).map(([uid, { dates, meta }]) =>
-        buildAbsentDays(supabase, uid, startDate, endDateStr, dates, meta)
-      )
+      Array.from(recordsByUser.entries()).map(([uid, { dates, meta }]) => {
+        const joiningDate = meta.created_at ? meta.created_at.split('T')[0] : '1970-01-01';
+        return buildAbsentDays(supabase, uid, startDate, endDateStr, joiningDate, dates, meta);
+      })
     );
     const allAbsentRows = absentRowArrays.flat();
 

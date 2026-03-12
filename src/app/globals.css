@@ -80,7 +80,7 @@
     --muted-foreground: 220 9% 60%;
     --accent: 32 95% 52%;
     --accent-foreground: 0 0% 100%;
-    --destructive: 0 62% 30%;
+    --destructive: 0 62% 50%;
     --destructive-foreground: 210 40% 98%;
     --success: 152 50% 35%;
     --success-foreground: 0 0% 100%;
@@ -112,7 +112,12 @@
     @apply bg-background text-foreground font-sans antialiased;
   }
 
-  h1, h2, h3, h4, h5, h6 {
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
     @apply font-semibold tracking-tight;
   }
 }
