@@ -22,6 +22,7 @@ export interface Profile {
     created_at?: string;
     updated_at?: string;
     avatar?: string; // Kept for UI
+    dob?: string;
 }
 
 export async function getProfile(id: string) {
@@ -88,7 +89,7 @@ export async function updateProfile(id: string, updates: Partial<Profile>) {
 
         // Filter updates to allow only specific fields
         const adminOnlyFields: (keyof Profile)[] = ['total_leaves', 'add_on_leaves'];
-        const allowedFields: (keyof Profile)[] = ['name', 'designation', 'phone'];
+        const allowedFields: (keyof Profile)[] = ['name', 'designation', 'phone', 'dob'];
 
         const safeUpdates: any = {};
 

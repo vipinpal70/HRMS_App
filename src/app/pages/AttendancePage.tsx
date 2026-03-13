@@ -64,14 +64,14 @@ function isToday(dateStr: string) {
 }
 
 const statusConfig: Record<string, { label: string; cls: string }> = {
-  present: { label: 'Present', cls: 'bg-emerald-600 text-white' },
-  on_time: { label: 'On Time', cls: 'bg-emerald-600 text-white' },
-  late: { label: 'Late', cls: 'bg-amber-500 text-white' },
-  absent: { label: 'Absent', cls: 'bg-red-500 text-white' },
-  half_day: { label: 'Half Day', cls: 'bg-orange-500 text-white' },
-  'half-day': { label: 'Half Day', cls: 'bg-orange-500 text-white' },
-  wfh: { label: 'WFH', cls: 'bg-blue-500 text-white' },
-  hybrid: { label: 'Hybrid', cls: 'bg-teal-500 text-white' },
+  present: { label: 'Present', cls: 'bg-emerald-600/20 text-emerald-500 border border-emerald-500' },
+  on_time: { label: 'On Time', cls: 'bg-emerald-600/20 text-emerald-500 border border-emerald-500' },
+  late: { label: 'Late', cls: 'bg-amber-500/20 text-amber-500 border border-amber-500' },
+  absent: { label: 'Absent', cls: 'bg-red-500/20 text-red-500 border border-red-500' },
+  half_day: { label: 'Half Day', cls: 'bg-orange-500/20 text-orange-500 border border-orange-500' },
+  'half-day': { label: 'Half Day', cls: 'bg-orange-500/20 text-orange-500 border border-orange-500' },
+  wfh: { label: 'WFH', cls: 'bg-blue-500/20 text-blue-500 border border-blue-500' },
+  hybrid: { label: 'Hybrid', cls: 'bg-teal-500/20 text-teal-500 border border-teal-500' },
   leave: { label: 'Leave', cls: 'bg-purple-500 text-white' },
   auto_checkout: { label: 'Auto C/O', cls: 'bg-slate-500 text-white' },
 };
@@ -367,7 +367,7 @@ function MyAttendanceView() {
         {records.length > 0 && (
           <button
             onClick={() => exportToCSV(records, `my-attendance-${MONTH_NAMES[month - 1]}-${year}`)}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors text-sm font-medium"
+            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/80 transition-colors text-sm font-medium"
           >
             <Download className="w-4 h-4" /> Export CSV
           </button>
@@ -475,7 +475,7 @@ function AllEmployeesView() {
         {filteredRecords.length > 0 && (
           <button
             onClick={() => exportToCSV(filteredRecords, exportFileName)}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition-colors text-sm font-medium shadow-sm"
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-white hover:bg-primary/80 transition-colors text-sm font-medium shadow-sm"
           >
             <Download className="w-4 h-4" /> Export to Excel
           </button>

@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
 
-export async function getLeaveRequests(userId?: string) {
+export async function getLeaveRequests(userId?: string, startDate?: string, endDate?: string) {
   try {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -23,14 +23,18 @@ export async function getLeaveRequests(userId?: string) {
         query = query.eq('user_id', user.id);
       }
     } else {
-      // Default to own leaves unless Admin specifically requests all
-      // Actually, getLeaveRequests usually implies "my leaves" OR "all leaves if admin"
-      // Let's check role first
       const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
       if (profile?.role !== 'admin' && profile?.role !== 'hr') {
         query = query.eq('user_id', user.id);
       }
-      // If admin, they see all by default unless filtered (which we handle on client or add filter here)
+    }
+
+    // Apply date range filter on created_at (Requested On date)
+    if (startDate) {
+      query = query.gte('created_at', `${startDate}T00:00:00.000Z`);
+    }
+    if (endDate) {
+      query = query.lte('created_at', `${endDate}T23:59:59.999Z`);
     }
 
     const { data, error } = await query.order('created_at', { ascending: false });
@@ -142,7 +146,89 @@ function countWorkingDays(startStr: string, endStr: string): number {
   return count;
 }
 
-export async function updateLeaveStatus(id: string, status: 'approved' | 'rejected') {
+export async function retractLeaveRequest(id: string) {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) return { error: 'Unauthorized' };
+
+    const { data: leaveReq, error: fetchError } = await supabase
+      .from('leave_requests')
+      .select('user_id, status')
+      .eq('id', id)
+      .single();
+
+    if (fetchError || !leaveReq) {
+      return { error: 'Leave request not found.' };
+    }
+
+    if (leaveReq.user_id !== user.id) {
+      return { error: 'Unauthorized' };
+    }
+
+    let newStatus: string = '';
+    if (leaveReq.status === 'pending') {
+      newStatus = 'cancelled';
+    } else if (leaveReq.status === 'approved') {
+      newStatus = 'retraction_pending';
+    } else {
+      return { error: 'Cannot retract request in current status.' };
+    }
+
+    const supabaseAdmin = createAdminClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+
+    const { error: updateError, data: updatedData } = await supabaseAdmin
+      .from('leave_requests')
+      .update({ status: newStatus })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (updateError) {
+      throw updateError;
+    }
+
+    // Notify admins/HR if it's a retraction request for an approved leave
+    if (newStatus === 'retraction_pending') {
+      const { data: admins } = await supabase
+        .from('profiles')
+        .select('id')
+        .in('role', ['admin', 'hr']);
+
+      if (admins && admins.length > 0) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('name, email')
+          .eq('id', user.id)
+          .single();
+
+        const empName = profile?.name || profile?.email || 'An employee';
+        const notifications = admins.map((admin) => ({
+          user_id: admin.id,
+          title: 'Leave Retraction Request',
+          message: `${empName} has requested to retract an approved leave.`,
+          is_read: false,
+          category: 'leave_request',
+          link: '/leave'
+        }));
+        await supabase.from('notifications').insert(notifications);
+      }
+    }
+
+    revalidatePath('/leave');
+    console.log('retractLeaveRequest success, status:', newStatus);
+    return { success: true, message: `Request ${newStatus === 'cancelled' ? 'cancelled' : 'retraction sent to admin'}.` };
+  } catch (error: any) {
+    console.error('Retract leave error:', error);
+    return { error: error.message };
+  }
+}
+
+export async function updateLeaveStatus(id: string, status: 'approved' | 'rejected' | 'cancelled') {
   try {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -162,21 +248,32 @@ export async function updateLeaveStatus(id: string, status: 'approved' | 'reject
 
     if (fetchError || !leaveReq) return { error: 'Leave request not found.' };
 
-    // Don't allow re-processing an already approved request
-    if (leaveReq.status === 'approved') {
+    // Don't allow re-processing an already approved request unless we are cancelling it
+    if (leaveReq.status === 'approved' && status !== 'cancelled') {
       return { error: 'Leave is already approved.' };
     }
 
-    const { error } = await supabase
+    const supabaseAdmin = createAdminClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+
+    const { error: updateError } = await supabaseAdmin
       .from('leave_requests')
       .update({ status })
       .eq('id', id);
 
-    if (error) throw error;
+    if (updateError) throw updateError;
 
-    // Deduct remaining_leaves only on approval
-    if (status === 'approved') {
-      // Fetch the employee's current remaining_leaves
+    // Deduct or Refund logic
+    // Decide whether we deduct or refund
+    const shouldDeduct = status === 'approved' && leaveReq.status === 'pending';
+    const shouldRefund =
+      status === 'cancelled' &&
+      (leaveReq.status === 'approved' || leaveReq.status === 'retraction_pending');
+
+    if (shouldDeduct || shouldRefund) {
+
       const { data: empProfile } = await supabase
         .from('profiles')
         .select('remaining_leaves')
@@ -185,17 +282,28 @@ export async function updateLeaveStatus(id: string, status: 'approved' | 'reject
 
       const currentLeaves = empProfile?.remaining_leaves ?? 0;
 
-      // Calculate days to deduct
-      let daysToDeduct = 0;
-      if (leaveReq.category === 'leave') {
-        // Count actual working days in the leave range
-        daysToDeduct = countWorkingDays(leaveReq.start_day, leaveReq.end_day || leaveReq.start_day);
-      }
-      // WFH doesn't deduct leave balance
+      let days = 0;
 
-      if (daysToDeduct > 0) {
-        const newBalance = Math.max(0, currentLeaves - daysToDeduct);
-        await supabase
+      if (leaveReq.category === 'leave') {
+        days = countWorkingDays(
+          leaveReq.start_day,
+          leaveReq.end_day || leaveReq.start_day
+        );
+      }
+
+      if (days > 0) {
+
+        let newBalance = currentLeaves;
+
+        if (shouldDeduct) {
+          newBalance = Math.max(0, currentLeaves - days);
+        }
+
+        if (shouldRefund) {
+          newBalance = currentLeaves + days;
+        }
+
+        await supabaseAdmin
           .from('profiles')
           .update({ remaining_leaves: newBalance })
           .eq('id', leaveReq.user_id);
@@ -227,7 +335,12 @@ export async function deductAbsentLeave(userId: string) {
     const currentLeaves = empProfile?.remaining_leaves ?? 0;
     const newBalance = Math.max(0, currentLeaves - 1);
 
-    const { error } = await supabase
+    const supabaseAdmin = createAdminClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+
+    const { error } = await supabaseAdmin
       .from('profiles')
       .update({ remaining_leaves: newBalance })
       .eq('id', userId);

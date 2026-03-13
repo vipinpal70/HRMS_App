@@ -28,7 +28,7 @@ import { toast } from 'react-hot-toast';
 
 const holidayTypeStyles = {
   holiday: 'bg-destructive/10 text-destructive',
-  event: 'bg-accent/10 text-accent',
+  event: 'bg-purple-500/10 text-purple-500',
 };
 
 interface AttendanceRecord {
@@ -327,12 +327,24 @@ export default function Dashboard() {
     pending: 'bg-muted text-muted-foreground',
   };
 
+  const now = new Date();
   const upcomingHolidays = holidays
-    .filter((h) => h.date >= new Date())
-    .sort((a, b) => a.date.getTime() - b.date.getTime())
-    .slice(0, 4);
+    .filter((h) => {
+      const isUpcoming = h.date >= now;
+      if (!isUpcoming) return false;
+      if (h.type === 'event') {
+        return h.date.getMonth() === now.getMonth() && h.date.getFullYear() === now.getFullYear();
+      }
+      return h.type === 'holiday';
+    })
+    .sort((a, b) => a.date.getTime() - b.date.getTime());
+
+  const upcomingEvents = holidays
+    .filter((h) => h.date >= new Date() && h.type === 'event')
+    .sort((a, b) => a.date.getTime() - b.date.getTime());
 
   const holidayDates = holidays.map((h) => h.date);
+  const eventDates = holidays.filter((h) => h.type === 'event').map((h) => h.date);
 
   // Debug user name
   useEffect(() => {
@@ -482,17 +494,18 @@ export default function Dashboard() {
             selected={calendarDate}
             onSelect={setCalendarDate}
             className="rounded-md border shadow-sm p-4 w-full"
-            modifiers={{ holiday: holidayDates }}
+            modifiers={{ holiday: holidayDates, event: eventDates }}
             modifiersClassNames={{
               holiday: 'bg-destructive/15 text-destructive font-bold',
+              event: 'bg-purple-500/10 text-purple-500 font-bold',
             }}
           />
         </div>
 
         {/* Upcoming Holidays & Events */}
-        <div className="stat-card">
+        <div className="stat-card flex flex-col">
           <h2 className="font-semibold text-lg mb-4">Upcoming Holidays & Events</h2>
-          <div className="space-y-3">
+          <div className="space-y-3 max-h-[350px] overflow-y-auto pr-2 custom-scrollbar">
             {upcomingHolidays.map((h, i) => (
               <div key={i} className="flex items-center gap-3 py-2.5 border-b border-border/50 last:border-0">
                 <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${holidayTypeStyles[h.type]}`}>

@@ -93,7 +93,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-100">
+    <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-800">
       <Tabs defaultValue="login" className="w-[400px]">
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="login">Login</TabsTrigger>
@@ -208,6 +208,10 @@ export default function LoginPage() {
                 <div className="space-y-1">
                   <Label htmlFor="name">Full Name</Label>
                   <Input id="name" name="name" type="text" placeholder="John Doe" required />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="dob">Date of Birth</Label>
+                  <Input id="dob" name="dob" type="date" required />
                 </div>
                 <div className="space-y-1">
                   <Label htmlFor="signup-email">Email</Label>

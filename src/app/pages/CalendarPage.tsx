@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Palmtree, Plus, Loader2, Trash } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Palmtree, Plus, Loader2, Trash, Star } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { useAuth } from '../context/AuthContext';
 import { addHoliday, getCalendarEvents, ensureMonthWeekends, getYearHolidays, deleteHoliday } from '../actions/calendar';
@@ -16,7 +16,7 @@ interface CalendarEvent {
 
 const typeColors = {
   holiday: 'bg-destructive/10 text-destructive border-destructive/20',
-  event: 'bg-accent/10 text-accent border-accent/20',
+  event: 'bg-purple-500/10 text-purple-500 border-purple-500/20',
   weekend: 'bg-muted text-muted-foreground border-border',
 };
 
@@ -195,8 +195,10 @@ export default function CalendarPage() {
               >
                 {day}
                 {event && (
-                  <div className={`mt-1 text-[10px] leading-tight px-0 font-semibold`}>
-                    {event.description}
+                  <div className="mt-1 flex flex-col items-center gap-0.5">
+                    <div className="text-[10px] leading-tight px-0 font-semibold truncate max-w-full">
+                      {event.description}
+                    </div>
                   </div>
                 )}
                 {weekend && !event && (
@@ -239,12 +241,12 @@ export default function CalendarPage() {
       {/* Upcoming Holidays */}
       <div className="stat-card">
         <h3 className="font-semibold mb-3">Upcoming Holidays & Events</h3>
-        <div className="space-y-2">
+        <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
           {yearHolidays.map((h, i) => (
             <div key={i} className="flex items-center justify-between gap-3 py-2 border-b border-border/50 last:border-0">
               <div className="flex items-center gap-3">
                 <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${typeColors[h.type]}`}>
-                  <Palmtree className="w-4 h-4" />
+                  {h.type === 'event' ? <Star className="w-4 h-4" /> : <Palmtree className="w-4 h-4" />}
                 </div>
                 <div>
                   <p className="text-sm font-medium">{h.description}</p>
@@ -253,9 +255,11 @@ export default function CalendarPage() {
                   </p>
                 </div>
               </div>
-              <button onClick={() => handleDeleteHoliday(h.id)}>
-                <Trash className="w-4 h-4 hover:text-red-500" />
-              </button>
+              {h.type !== 'event' && (
+                <button onClick={() => handleDeleteHoliday(h.id)}>
+                  <Trash className="w-4 h-4 hover:text-red-500 transition-colors" />
+                </button>
+              )}
             </div>
           ))}
           {yearHolidays.length === 0 && (

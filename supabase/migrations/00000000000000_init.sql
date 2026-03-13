@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   name TEXT NOT NULL,
   email TEXT UNIQUE NOT NULL,
   phone TEXT,
+  dob DATE,
   role TEXT CHECK (role IN ('admin', 'hr', 'emp')) NOT NULL DEFAULT 'emp',
   emp_id TEXT UNIQUE,
   designation TEXT,

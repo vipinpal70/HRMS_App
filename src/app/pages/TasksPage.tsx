@@ -81,7 +81,19 @@ export default function TasksPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
 
-  // Date Range State (default: current month)
+  // Date Range Helpers
+  const getWeekDates = () => {
+    const now = new Date();
+    const day = now.getDay();
+    const diff = now.getDate() - day + (day === 0 ? -6 : 1); // Adjust to Monday
+    const monday = new Date(now.getFullYear(), now.getMonth(), diff);
+    const sunday = new Date(now.getFullYear(), now.getMonth(), diff + 6);
+    return {
+      start: monday.toISOString().split('T')[0],
+      end: sunday.toISOString().split('T')[0]
+    };
+  };
+
   const getMonthDates = () => {
     const now = new Date();
     const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -93,6 +105,7 @@ export default function TasksPage() {
   };
 
   const [dateRange, setDateRange] = useState(getMonthDates);
+  const [timeFilter, setTimeFilter] = useState<'week' | 'month'>('month');
 
   const canManageTasks = user?.role === 'admin' || user?.role === 'hr';
 
@@ -102,8 +115,8 @@ export default function TasksPage() {
       const userId = viewAll ? 'all' : undefined;
       const data = await getTasks(
         userId,
-        viewAll ? dateRange.start : undefined,
-        viewAll ? dateRange.end : undefined,
+        dateRange.start, // Always use dateRange for consistency
+        dateRange.end,
         viewAll && employeeFilter !== 'all' ? employeeFilter : undefined
       );
       setTasks(data as any);
@@ -117,6 +130,15 @@ export default function TasksPage() {
   useEffect(() => {
     fetchTasks();
   }, [viewAll, dateRange, employeeFilter]);
+
+  // Update date range when filter changes
+  useEffect(() => {
+    if (timeFilter === 'week') {
+      setDateRange(getWeekDates());
+    } else {
+      setDateRange(getMonthDates());
+    }
+  }, [timeFilter]);
 
   useEffect(() => {
     if (canManageTasks && (isAddOpen || viewAll)) {
@@ -232,6 +254,36 @@ export default function TasksPage() {
     return matchesSearch;
   });
 
+  // Grouping Logic
+  const groupedTasks = filtered.reduce((acc, task) => {
+    const date = task.start_day;
+    if (!acc[date]) acc[date] = [];
+    acc[date].push(task);
+    return acc;
+  }, {} as Record<string, Task[]>);
+
+  const sortedDates = Object.keys(groupedTasks).sort((a, b) => b.localeCompare(a));
+
+  const formatDateHeader = (dateStr: string) => {
+    const date = new Date(dateStr);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    const compareDate = new Date(dateStr);
+    compareDate.setHours(0, 0, 0, 0);
+
+    if (compareDate.getTime() === today.getTime()) return 'Today';
+    if (compareDate.getTime() === yesterday.getTime()) return 'Yesterday';
+
+    return date.toLocaleDateString('en-GB', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric'
+    });
+  };
+
   const pendingCount = filtered.filter(t => t.status === 'pending' || t.status === 'in_progress').length;
   const completedCount = filtered.filter(t => t.status === 'completed').length;
   const totalCount = filtered.length;
@@ -276,6 +328,27 @@ export default function TasksPage() {
         </div>
 
         <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+          <div className="flex bg-muted p-1 rounded-xl mr-2">
+            <button
+              onClick={() => setTimeFilter('week')}
+              className={cn(
+                "px-3 py-1.5 text-xs font-medium rounded-lg transition-all",
+                timeFilter === 'week' ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              Week
+            </button>
+            <button
+              onClick={() => setTimeFilter('month')}
+              className={cn(
+                "px-3 py-1.5 text-xs font-medium rounded-lg transition-all",
+                timeFilter === 'month' ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              Month
+            </button>
+          </div>
+
           {canManageTasks && (
             <>
               <Button
@@ -503,14 +576,6 @@ export default function TasksPage() {
               </div>
             </div>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setDateRange(getMonthDates())}
-            className="text-xs h-10 px-4"
-          >
-            This Month
-          </Button>
         </div>
       )}
 
@@ -525,99 +590,112 @@ export default function TasksPage() {
         <Progress value={progress} className="h-2.5" />
       </div>
 
-      {/* Task List */}
-      <div className="grid gap-3">
+      {/* Task List - Grouped by Date */}
+      <div className="space-y-8">
         {loading ? (
           <div className="text-center py-10"><Loader2 className="w-8 h-8 animate-spin mx-auto text-muted-foreground" /></div>
         ) : filtered.length === 0 ? (
           <div className="text-center py-10 text-muted-foreground bg-muted/20 rounded-lg">No tasks found.</div>
         ) : (
-          filtered.map((task) => {
-            return (
-              <div
-                key={task.id}
-                className="flex flex-col sm:flex-row sm:items-center gap-4 p-4 rounded-lg border border-border bg-card hover:shadow-md transition-all"
-              >
-                <div className="flex-1">
-                  <div>
-                    {/* Status Dropdown */}
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <h3 className={`font-semibold text-lg ${task.status === 'completed' ? 'line-through text-muted-foreground' : ''}`}>
-                          {task.title}
-                        </h3>
-                        {task.description && <p className="text-sm text-muted-foreground mt-1">{task.description}</p>}
-                      </div>
-
-                      <div className="w-40">
-                        <Select
-                          value={task.status}
-                          onValueChange={(val) => handleStatusChange(task.id, val)}
-                          disabled={isPending}
-                        >
-                          <SelectTrigger className={cn(
-                            "h-8 text-xs font-medium",
-                            task.status === 'completed' && "bg-success/10 text-success border-success/20",
-                            task.status === 'in_progress' && "bg-info/10 text-info border-info/20",
-                            task.status === 'pending' && "bg-muted text-muted-foreground border-border"
-                          )}>
-                            <SelectValue placeholder="Status" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="pending">Pending</SelectItem>
-                            <SelectItem value="in_progress">In Progress</SelectItem>
-                            <SelectItem value="completed">Completed</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-4 mt-3 text-xs text-muted-foreground">
-                    {viewAll && task.assignee_name && (
-                      <span className="flex items-center gap-1.5 bg-secondary px-2.5 py-1 rounded-md text-secondary-foreground font-medium">
-                        <Users className="w-3.5 h-3.5" /> {task.assignee_name}
-                      </span>
-                    )}
-                    <span className={`px-2.5 py-1 rounded-md capitalize font-medium ${priorityColors[task.priority]}`}>
-                      {task.priority}
-                    </span>
-                    <div className="flex items-center gap-1.5">
-                      <CalendarIcon className="w-3.5 h-3.5" />
-                      <span>{new Date(task.start_day).toLocaleDateString()}</span>
-                      <span>-</span>
-                      <span>{new Date(task.end_day).toLocaleDateString()}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Actions */}
-                <div className="flex gap-2 shrink-0">
-                  {(canManageTasks || task.assignee_id === user?.id) && (
-                    <button
-                      className='hover:bg-muted-foreground/20 p-1 rounded-lg w-10 h-10 flex items-center justify-center'
-                      onClick={() => handleEditTaskClick(task)}
-                      title="Edit Task"
-                    >
-                      <Edit2 className="w-4 h-4 text-muted-foreground hover:text-foreground" />
-                    </button>
-                  )}
-                  {user?.role === 'admin' && (
-                    <button
-                      onClick={() => {
-                        setDeletingTaskId(task.id);
-                        setIsDeleteDialogOpen(true);
-                      }}
-                      className='hover:bg-destructive/20 p-1 rounded-lg w-10 h-10 flex items-center justify-center'
-                      title="Delete Task"
-                    >
-                      <Trash2 className="w-4 h-4 text-destructive hover:text-destructive/80" />
-                    </button>
-                  )}
-                </div>
+          sortedDates.map((dateStr) => (
+            <div key={dateStr} className="space-y-4">
+              <div className="flex items-center gap-4">
+                <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+                  {formatDateHeader(dateStr)}
+                </h2>
+                <div className="h-px w-full bg-border/60"></div>
               </div>
-            );
-          })
+
+              <div className="grid gap-3">
+                {groupedTasks[dateStr].map((task) => (
+                  <div
+                    key={task.id}
+                    className="flex flex-col sm:flex-row sm:items-center gap-4 p-4 rounded-xl border border-border/50 bg-card hover:shadow-lg hover:shadow-primary/5 transition-all group"
+                  >
+                    <div className="flex-1">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <h3 className={`font-semibold text-base ${task.status === 'completed' ? 'line-through text-muted-foreground/60' : ''}`}>
+                            {task.title}
+                          </h3>
+                          {task.description && <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{task.description}</p>}
+                        </div>
+
+                        <div className="w-36 shrink-0">
+                          <Select
+                            value={task.status}
+                            onValueChange={(val) => handleStatusChange(task.id, val)}
+                            disabled={isPending}
+                          >
+                            <SelectTrigger className={cn(
+                              "h-8 text-[11px] font-bold uppercase tracking-tight rounded-lg",
+                              task.status === 'completed' && "bg-success/10 text-success border-success/20",
+                              task.status === 'in_progress' && "bg-info/10 text-info border-info/20",
+                              task.status === 'pending' && "bg-muted text-muted-foreground border-border"
+                            )}>
+                              <SelectValue placeholder="Status" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="pending">Pending</SelectItem>
+                              <SelectItem value="in_progress">In Progress</SelectItem>
+                              <SelectItem value="completed">Completed</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-3 mt-4 text-[11px] text-muted-foreground font-medium">
+                        {viewAll && task.assignee_name && (
+                          <span className="flex items-center gap-1.5 bg-secondary px-2 py-0.5 rounded-md text-secondary-foreground font-bold">
+                            <Users className="w-3 h-3" /> {task.assignee_name.toUpperCase()}
+                          </span>
+                        )}
+                        <span className={`px-2 py-0.5 rounded-md uppercase font-bold tracking-wider ${priorityColors[task.priority]}`}>
+                          {task.priority}
+                        </span>
+                        <div className="flex items-center gap-1.5 bg-muted/50 px-2 py-0.5 rounded-md">
+                          <Clock className="w-3 h-3" />
+                          <span>{new Date(task.start_day).toLocaleDateString()}</span>
+                          {task.start_day !== task.end_day && (
+                            <>
+                              <span>-</span>
+                              <span>{new Date(task.end_day).toLocaleDateString()}</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                      {(canManageTasks || task.assignee_id === user?.id) && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 rounded-lg"
+                          onClick={() => handleEditTaskClick(task)}
+                        >
+                          <Edit2 className="w-3.5 h-3.5 text-muted-foreground" />
+                        </Button>
+                      )}
+                      {user?.role === 'admin' && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 rounded-lg hover:bg-destructive/10 hover:text-destructive text-muted-foreground"
+                          onClick={() => {
+                            setDeletingTaskId(task.id);
+                            setIsDeleteDialogOpen(true);
+                          }}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))
         )}
       </div>
 

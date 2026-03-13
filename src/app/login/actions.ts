@@ -44,6 +44,7 @@ export async function signup(formData: FormData) {
     const email = formData.get('email') as string
     const password = formData.get('password') as string
     const name = formData.get('name') as string
+    const dob = formData.get('dob') as string
 
     console.log('Attempting signup for:', email);
 
@@ -53,6 +54,7 @@ export async function signup(formData: FormData) {
       options: {
         data: {
           full_name: name,
+          dob: dob,
         },
       },
     })

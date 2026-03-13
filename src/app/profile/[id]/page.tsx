@@ -17,6 +17,7 @@ import {
     ShieldCheck,
     Palmtree,
     Trash2,
+    Calendar,
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
@@ -37,6 +38,7 @@ export default function ProfilePage() {
         phone: '',
         total_leaves: 0,
         add_on_leaves: 0,
+        dob: '',
     });
 
     useEffect(() => {
@@ -52,6 +54,7 @@ export default function ProfilePage() {
                     phone: data.phone || '',
                     total_leaves: data.total_leaves ?? 20,
                     add_on_leaves: data.add_on_leaves ?? 0,
+                    dob: data.dob || '',
                 });
             }
             setLoading(false);
@@ -297,6 +300,36 @@ export default function ProfilePage() {
                                     placeholder="+91 98765 43210"
                                     className="w-full bg-background border border-border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-primary/20 transition-all outline-none disabled:bg-muted/30 disabled:text-muted-foreground"
                                 />
+                            </div>
+
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                                    <Calendar className="w-3.5 h-3.5" /> Date of Birth
+                                </label>
+                                {isEditing ? (
+                                    <input
+                                        type="date"
+                                        value={formData.dob}
+                                        onChange={e => setFormData({ ...formData, dob: e.target.value })}
+                                        className="w-full bg-background border border-border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-primary/20 transition-all outline-none"
+                                    />
+                                ) : profile.dob ? (
+                                    <div className="w-full bg-muted/30 border border-border rounded-xl px-4 py-2.5 text-foreground">
+                                        {new Date(profile.dob).toLocaleDateString('en-GB', {
+                                            day: 'numeric',
+                                            month: 'long',
+                                            year: 'numeric'
+                                        })}
+                                    </div>
+                                ) : (
+                                    <button
+                                        onClick={() => setIsEditing(true)}
+                                        className="w-full bg-background border border-dashed border-border rounded-xl px-4 py-2.5 text-muted-foreground hover:bg-muted/50 hover:text-primary transition-all flex items-center gap-2 group"
+                                    >
+                                        <Edit3 className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
+                                        Add Date of Birth
+                                    </button>
+                                )}
                             </div>
 
                             {currentUser?.role === 'admin' && (

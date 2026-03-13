@@ -1,6 +1,7 @@
 'use server';
 
 import { createClient } from '@/lib/supabase/server';
+import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
 
 /**
@@ -103,6 +104,32 @@ export async function getCalendarEvents(month: number, year: number) {
             .lte('date', endDate);
 
         if (error) throw error;
+
+        // Fetch birthdays for this month using Admin Client to bypass RLS
+        const supabaseAdmin = createAdminClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.SUPABASE_SERVICE_ROLE_KEY!
+        );
+
+        const { data: profiles, error: profileError } = await supabaseAdmin
+            .from('profiles')
+            .select('name, dob')
+            .not('dob', 'is', null);
+
+        if (!profileError && profiles) {
+            const birthdays = profiles
+                .filter(p => {
+                    const dob = new Date(p.dob);
+                    return dob.getMonth() + 1 === month;
+                })
+                .map(p => ({
+                    date: `${year}-${String(month).padStart(2, '0')}-${String(new Date(p.dob).getDate()).padStart(2, '0')}`,
+                    type: 'event',
+                    description: `🎂 ${p.name}'s Birthday`
+                }));
+            return [...(data || []), ...birthdays];
+        }
+
         return data || [];
     } catch (error) {
         console.error('Error fetching calendar events:', error);
@@ -129,6 +156,30 @@ export async function getYearHolidays(year: number) {
             .order('date', { ascending: true });
 
         if (error) throw error;
+
+        // Fetch birthdays for the year using Admin Client to bypass RLS
+        const supabaseAdmin = createAdminClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.SUPABASE_SERVICE_ROLE_KEY!
+        );
+
+        const { data: profiles, error: profileError } = await supabaseAdmin
+            .from('profiles')
+            .select('name, dob')
+            .not('dob', 'is', null);
+
+        if (!profileError && profiles) {
+            const birthdays = profiles.map(p => {
+                const dob = new Date(p.dob);
+                return {
+                    date: `${year}-${String(dob.getMonth() + 1).padStart(2, '0')}-${String(dob.getDate()).padStart(2, '0')}`,
+                    type: 'event',
+                    description: `🎂 ${p.name}'s Birthday`
+                };
+            });
+            return [...(data || []), ...birthdays].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        }
+
         return data || [];
     } catch (error) {
         console.error('Error fetching year holidays:', error);

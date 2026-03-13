@@ -4,6 +4,20 @@
 @tailwind components;
 @tailwind utilities;
 
+/* hide scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #efefef;
+  border-radius: 4px;
+}
+
 @layer base {
   :root {
     --background: 220 20% 97%;
