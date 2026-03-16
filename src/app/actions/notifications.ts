@@ -2,7 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server';
 
-// ─── Fetch Notifications (paginated) ────────────────────────
+// ─── Fetch Notifications ────────────────────────────────────
 
 export async function getNotifications(limit = 20, offset = 0) {
     try {
@@ -135,6 +135,38 @@ export async function deleteAllRead() {
         return { success: true };
     } catch (error: any) {
         console.error('Error cleaning up notifications:', error);
+        return { error: error.message };
+    }
+}
+
+// ─── Create Notification ────────────────────────────────────
+
+export async function createNotification(
+    title: string,
+    message: string,
+    type: 'info' | 'success' | 'warning' | 'error' = 'info',
+    category: string = 'system'
+) {
+    try {
+        const supabase = await createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return { error: 'Unauthorized' };
+
+        const { error } = await supabase
+            .from('notifications')
+            .insert({
+                user_id: user.id,
+                title,
+                message,
+                type,
+                category,
+                is_read: false,
+            });
+
+        if (error) throw error;
+        return { success: true };
+    } catch (error: any) {
+        console.error('Error creating notification:', error);
         return { error: error.message };
     }
 }

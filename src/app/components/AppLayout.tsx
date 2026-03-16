@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '../context/AuthContext';
 import { NotificationProvider } from '../context/NotificationContext';
 import AppSidebar from './AppSidebar';
+import TaskReminder from './TaskReminder';
 import { Loader2, Menu } from 'lucide-react';
 import { useState } from 'react';
 
@@ -53,6 +54,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           mobileMenuOpen={mobileMenuOpen}
           setMobileMenuOpen={setMobileMenuOpen}
         />
+        <TaskReminder />
 
         <main className="flex-1 min-h-screen overflow-y-auto">
           {/* Mobile Header */}

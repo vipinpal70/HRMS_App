@@ -175,6 +175,17 @@ export default function AppSidebar({
                     <span>My Profile</span>
                   </button>
 
+                  {/* <button
+                    onClick={() => {
+                      window.location.href = '/team';
+                      setUserMenuOpen(false);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-muted transition-colors text-left"
+                  >
+                    <Users className="w-4 h-4 text-muted-foreground" />
+                    <span>Team Members</span>
+                  </button> */}
+
                   <div className="px-4 py-2 hover:bg-muted transition-colors cursor-pointer">
                     <NotificationBell showFullList={false} />
                   </div>

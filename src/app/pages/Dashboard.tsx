@@ -25,6 +25,7 @@ import { getTasks } from '../actions/tasks';
 import { getQuoteOfDay } from '../actions/quotes';
 import { getCompanySettings } from '../actions/settings';
 import { toast } from 'react-hot-toast';
+import Link from 'next/link';
 
 const holidayTypeStyles = {
   holiday: 'bg-destructive/10 text-destructive',
@@ -320,6 +321,7 @@ export default function Dashboard() {
 
   const todayStr = new Date().toISOString().split('T')[0];
   const todayTasks = tasks.filter(t => t.start_day === todayStr);
+  const pendingTasks = tasks.filter(t => t.status !== 'completed' && t.start_day !== todayStr);
 
   const statusColors = {
     completed: 'bg-success/10 text-success',
@@ -337,10 +339,6 @@ export default function Dashboard() {
       }
       return h.type === 'holiday';
     })
-    .sort((a, b) => a.date.getTime() - b.date.getTime());
-
-  const upcomingEvents = holidays
-    .filter((h) => h.date >= new Date() && h.type === 'event')
     .sort((a, b) => a.date.getTime() - b.date.getTime());
 
   const holidayDates = holidays.map((h) => h.date);
@@ -565,6 +563,63 @@ export default function Dashboard() {
                 className="h-2" />
             </div>
           </>
+        )}
+      </div>
+
+      {/* Pending Tasks */}
+      <div className="stat-card">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <h2 className="font-semibold text-lg">Pending Tasks</h2>
+            <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-500 border-amber-500/20 uppercase tracking-wider font-bold">
+              Incomplete
+            </Badge>
+          </div>
+          {pendingTasks.length > 2 && (
+            <Link href="/tasks">
+              <Button variant="ghost" size="sm" className="text-xs text-primary hover:text-primary/80 h-8">
+                See more
+              </Button>
+            </Link>
+          )}
+        </div>
+
+        {pendingTasks.length === 0 ? (
+          <div className="text-center py-6 bg-muted/5 rounded-xl border border-dashed border-border/50">
+            <CheckCircle2 className="w-8 h-8 text-success/30 mx-auto mb-2" />
+            <p className="text-sm text-muted-foreground">All caught up! No pending tasks.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {pendingTasks.slice(0, 2).map((task, i) => (
+              <Link key={i} href="/tasks" className="block group">
+                <div className="flex items-center justify-between py-3 px-1 border-b border-border/50 last:border-0 group-hover:bg-muted/30 transition-colors rounded-lg">
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-sm font-medium group-hover:text-primary transition-colors">
+                      {task.title}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                      <Timer className="w-3 h-3" />
+                      Due: {new Date(task.start_day).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                    </span>
+                  </div>
+                  <span className={`badge-status ${statusColors[task.status as keyof typeof statusColors]}`}>
+                    {task.status.replace('_', ' ')}
+                  </span>
+                </div>
+              </Link>
+            ))}
+
+            {pendingTasks.length <= 2 && (
+              <div className="pt-2 text-center">
+                <Link href="/tasks">
+                  <button className="w-full text-xs font-semibold h-9 rounded-xl bg-gray-300/20 border border-dashed text-muted-foreground hover:bg-primary hover:text-white">
+                    View all pending tasks
+                  </button>
+                </Link>
+              </div>
+            )}
+          </div>
         )}
       </div>
     </div>
