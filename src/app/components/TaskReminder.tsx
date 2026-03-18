@@ -22,7 +22,7 @@ export default function TaskReminder() {
   const [showPopUp, setShowPopUp] = useState(false);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || user.role !== 'emp') return;
 
     const checkTasksAndNotify = async () => {
       const today = new Date();

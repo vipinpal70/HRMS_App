@@ -20,6 +20,7 @@ import {
     Calendar,
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { Mosaic } from 'react-loading-indicators';
 
 export default function ProfilePage() {
     const { id } = useParams<{ id: string }>();
@@ -96,7 +97,7 @@ export default function ProfilePage() {
     if (loading) {
         return (
             <div className="flex items-center justify-center min-h-[60vh]">
-                <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                <Mosaic color="#f88a10" size="small" />
             </div>
         );
     }

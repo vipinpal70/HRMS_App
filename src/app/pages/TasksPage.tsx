@@ -16,6 +16,8 @@ import { getTasks, createTask, getEmployeesList, updateTaskStatus, createSelfTas
 import { toast } from 'react-hot-toast';
 import { useTransition } from 'react';
 import { cn } from '@/lib/utils';
+import Skeleton from 'react-loading-skeleton';
+import 'react-loading-skeleton/dist/skeleton.css';
 
 type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';
 
@@ -593,7 +595,24 @@ export default function TasksPage() {
       {/* Task List - Grouped by Date */}
       <div className="space-y-8">
         {loading ? (
-          <div className="text-center py-10"><Loader2 className="w-8 h-8 animate-spin mx-auto text-muted-foreground" /></div>
+          <div className="space-y-6">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="p-4 rounded-xl border border-border/50 bg-card space-y-3">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <Skeleton width="60%" height={18} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+                    <Skeleton width="80%" height={14} style={{ marginTop: 8 }} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+                  </div>
+                  <Skeleton width={100} height={28} borderRadius={8} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+                </div>
+                <div className="flex items-center gap-3">
+                  <Skeleton width={60} height={20} borderRadius={6} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+                  <Skeleton width={80} height={20} borderRadius={6} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+                  <Skeleton width={120} height={20} borderRadius={6} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+                </div>
+              </div>
+            ))}
+          </div>
         ) : filtered.length === 0 ? (
           <div className="text-center py-10 text-muted-foreground bg-muted/20 rounded-lg">No tasks found.</div>
         ) : (

@@ -6,6 +6,8 @@ import { Button } from '../components/ui/button';
 import { useAuth } from '../context/AuthContext';
 import { addHoliday, getCalendarEvents, ensureMonthWeekends, getYearHolidays, deleteHoliday } from '../actions/calendar';
 import { toast } from 'react-hot-toast';
+import Skeleton from 'react-loading-skeleton';
+import 'react-loading-skeleton/dist/skeleton.css';
 
 interface CalendarEvent {
   id?: string;
@@ -65,8 +67,38 @@ export default function CalendarPage() {
 
   if (authLoading || (loading && events.length === 0)) {
     return (
-      <div className="flex h-[400px] items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      <div className="space-y-6 animate-fade-up">
+        <div>
+          <Skeleton width={120} height={28} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+          <Skeleton width={250} height={14} style={{ marginTop: 6 }} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+        </div>
+        <div className="flex items-center justify-between">
+          <Skeleton width={36} height={36} borderRadius={8} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+          <Skeleton width={160} height={22} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+          <Skeleton width={36} height={36} borderRadius={8} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+        </div>
+        <div className="stat-card">
+          <div className="grid grid-cols-7 gap-1">
+            {Array.from({ length: 7 }).map((_, i) => (
+              <Skeleton key={`h-${i}`} width="100%" height={14} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+            ))}
+            {Array.from({ length: 35 }).map((_, i) => (
+              <Skeleton key={i} width="100%" height={60} borderRadius={8} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+            ))}
+          </div>
+        </div>
+        <div className="stat-card space-y-3">
+          <Skeleton width={200} height={18} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-3 py-2">
+              <Skeleton circle width={32} height={32} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+              <div className="flex-1">
+                <Skeleton width="50%" height={14} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+                <Skeleton width="35%" height={12} style={{ marginTop: 4 }} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     );
   }

@@ -5,10 +5,12 @@ import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Textarea } from '../components/ui/textarea';
-import { Badge } from '../components/ui/badge';
-import { Calendar, Send, CheckCircle2, XCircle, Clock, Search, Users, AlertTriangle, Trash, Loader2 } from 'lucide-react';
+import { Calendar, Send, CheckCircle2, XCircle, Clock, Search, User, AlertTriangle, Trash, Loader2 } from 'lucide-react';
 import { getLeaveRequests, createLeaveRequest, updateLeaveStatus, deleteLeaveRequest, retractLeaveRequest } from '../actions/leave';
 import { toast } from 'react-hot-toast';
+import Skeleton from 'react-loading-skeleton';
+import 'react-loading-skeleton/dist/skeleton.css';
+
 
 type LeaveType = 'full-day' | 'half-day' | 'wfh' | 'hybrid';
 type LeaveStatus = 'pending' | 'approved' | 'rejected' | 'cancelled' | 'retraction_pending';
@@ -338,7 +340,21 @@ export default function LeavePage() {
       {/* Requests */}
       <div className="space-y-8">
         {loading ? (
-          <div className="text-center py-10"><Loader2 className="w-8 h-8 animate-spin mx-auto text-muted-foreground" /></div>
+          <div className="space-y-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="stat-card space-y-2">
+                <div className="flex items-center gap-2">
+                  <Skeleton width={70} height={22} borderRadius={12} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+                  <Skeleton width={80} height={22} borderRadius={12} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+                  <Skeleton width={90} height={22} borderRadius={12} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+                </div>
+                <Skeleton width="70%" height={14} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+                <Skeleton width="50%" height={12} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+                <Skeleton width="40%" height={12} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+              </div>
+            ))}
+          </div>
+
         ) : filteredRequests.length === 0 ? (
           <div className="text-center py-10 text-muted-foreground bg-muted/20 rounded-lg">No requests found.</div>
         ) : (
@@ -383,6 +399,10 @@ export default function LeavePage() {
                           )}
                         </div>
                         <p className="text-sm">{req.reason}</p>
+                        <p className='text-xs text-muted-foreground flex items-center gap-1'>
+                          <User className="w-3 h-3" />
+                          {req.user_email}
+                        </p>
                         <p className="text-xs text-muted-foreground flex items-center gap-1">
                           <Calendar className="w-3 h-3" />
                           {req.start_date} {req.end_date !== req.start_date && `→ ${req.end_date}`}

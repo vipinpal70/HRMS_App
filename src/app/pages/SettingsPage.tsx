@@ -5,6 +5,8 @@ import { useAuth } from '../context/AuthContext';
 import { getCompanySettings, updateCompanySettings, updateTotalLeaves, getCurrentTotalLeaves } from '../actions/settings';
 import { toast } from 'react-hot-toast';
 import { Loader2, Shield, MapPin, Wifi, Building2, Clock, CalendarDays } from 'lucide-react';
+import Skeleton from 'react-loading-skeleton';
+import 'react-loading-skeleton/dist/skeleton.css';
 
 export default function SettingsPage() {
   const { user } = useAuth();
@@ -56,8 +58,67 @@ export default function SettingsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+      <div className="space-y-6 animate-fade-up max-w-4xl mx-auto">
+        <div>
+          <Skeleton width={120} height={28} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+          <Skeleton width={300} height={14} style={{ marginTop: 6 }} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+        </div>
+        {/* Office Hours skeleton */}
+        <div className="stat-card space-y-4">
+          <div className="flex items-center gap-2">
+            <Skeleton circle width={20} height={20} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+            <Skeleton width={130} height={20} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+          </div>
+          <Skeleton width="80%" height={14} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Skeleton width={120} height={14} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+              <Skeleton width="100%" height={38} borderRadius={6} style={{ marginTop: 4 }} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+            </div>
+            <div>
+              <Skeleton width={110} height={14} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+              <Skeleton width="100%" height={38} borderRadius={6} style={{ marginTop: 4 }} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+            </div>
+          </div>
+        </div>
+        {/* IP Validation skeleton */}
+        <div className="stat-card space-y-4">
+          <div className="flex items-center gap-2">
+            <Skeleton circle width={20} height={20} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+            <Skeleton width={170} height={20} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+          </div>
+          <Skeleton width="60%" height={14} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+          <Skeleton width={120} height={14} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+          <Skeleton width="100%" height={38} borderRadius={6} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+        </div>
+        {/* Geo-fencing skeleton */}
+        <div className="stat-card space-y-4">
+          <div className="flex items-center gap-2">
+            <Skeleton circle width={20} height={20} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+            <Skeleton width={200} height={20} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+          </div>
+          <Skeleton width="65%" height={14} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i}>
+                <Skeleton width={80} height={14} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+                <Skeleton width="100%" height={38} borderRadius={6} style={{ marginTop: 4 }} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+              </div>
+            ))}
+          </div>
+        </div>
+        {/* Leave Policy skeleton */}
+        <div className="stat-card space-y-4">
+          <div className="flex items-center gap-2">
+            <Skeleton circle width={20} height={20} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+            <Skeleton width={160} height={20} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+          </div>
+          <Skeleton width="75%" height={14} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+          <div className="flex items-end gap-3">
+            <Skeleton width={200} height={38} borderRadius={6} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+            <Skeleton width={110} height={38} borderRadius={8} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+          </div>
+        </div>
       </div>
     )
   }

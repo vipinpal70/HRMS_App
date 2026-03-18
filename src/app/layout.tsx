@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Roboto } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "./context/AuthContext";
 import AppLayout from "./components/AppLayout";
@@ -9,6 +10,11 @@ import { ThemeProvider } from "./components/ThemeProvider";
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
+});
+const roboto = Roboto({
+  weight: ['300', '400', '500', '700', '900'],
+  subsets: ["latin"],
+  variable: "--font-roboto",
 });
 
 const geistMono = Geist_Mono({
@@ -29,7 +35,8 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased
+        ${roboto.variable} ${geistMono.variable} font-sans antialiased`}
         suppressHydrationWarning={true}
       >
         <AuthProvider>

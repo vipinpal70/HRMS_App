@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Mail, Shield, Loader2, User, Search, X, Phone, Calendar, Users } from 'lucide-react';
 import { getEmployees, Profile } from '@/app/actions/profile';
 import Link from 'next/link';
+import { Mosaic } from 'react-loading-indicators';
 
 export default function TeamPage() {
   const [employees, setEmployees] = useState<Profile[]>([]);
@@ -22,7 +23,7 @@ export default function TeamPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        <Mosaic color="#f88a10" size="small" text="" textColor="#f88a10" />
       </div>
     );
   }

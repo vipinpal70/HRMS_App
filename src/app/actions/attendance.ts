@@ -69,7 +69,7 @@ async function getSettings(supabase: any) {
 
 // Helper: check if employee has an approved WFH or Hybrid leave for a given date
 export async function getApprovedLeaveForDate(supabase: any, userId: string, date: string) {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('leave_requests')
     .select('id, category')
     .eq('user_id', userId)
@@ -79,9 +79,11 @@ export async function getApprovedLeaveForDate(supabase: any, userId: string, dat
     .gte('end_day', date)
     .limit(1)
     .single();
+  console.log('[getApprovedLeaveForDate] userId:', userId, 'date:', date, 'data:', data, 'error:', error);
   return data ?? null; // { id, category } or null
 }
 
+// Check-in function
 export async function checkIn(latitude: number, longitude: number) {
   try {
     const supabase = await createClient();
@@ -198,6 +200,7 @@ export async function checkIn(latitude: number, longitude: number) {
   }
 }
 
+// Check-out function
 export async function checkOut(latitude: number, longitude: number) {
   try {
     const supabase = await createClient();
@@ -284,6 +287,7 @@ export async function checkOut(latitude: number, longitude: number) {
   }
 }
 
+// Get today's status
 export async function getTodayStatus() {
   try {
     const supabase = await createClient();
@@ -337,9 +341,8 @@ export async function getEffectiveWorkType() {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+
 // Absent-marking helper
-// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Builds a list of synthetic "absent" / "half_day" records for working days
@@ -443,9 +446,7 @@ async function buildAbsentDays(
   return result;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Month-scoped queries for the Attendance page
-// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Returns the logged-in user's attendance records for a specific month/year.
@@ -648,9 +649,8 @@ export async function getEmployeeListForFilter() {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+
 // LEGACY: kept for backward compat (Dashboard, etc.)
-// ─────────────────────────────────────────────────────────────────────────────
 export async function getAttendanceHistory(userId?: string) {
   try {
     const supabase = await createClient();

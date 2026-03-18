@@ -76,6 +76,7 @@
     --chart-5: 0 84% 60%;
 
     --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+    --font-roboto: 'Roboto', var(--font-roboto), system-ui, -apple-system, sans-serif;
     --font-mono: 'JetBrains Mono', monospace;
   }
 

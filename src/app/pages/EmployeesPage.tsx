@@ -5,6 +5,8 @@ import { Mail, Shield, Loader2, User, Trash, Search, X } from 'lucide-react';
 import { Badge } from '../components/ui/badge';
 import { deleteProfile, getEmployees, Profile } from '@/app/actions/profile';
 import Link from 'next/link';
+import Skeleton from 'react-loading-skeleton';
+import 'react-loading-skeleton/dist/skeleton.css';
 
 
 export default function EmployeesPage() {
@@ -37,8 +39,30 @@ export default function EmployeesPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+      <div className="space-y-6 animate-fade-up">
+        <div>
+          <Skeleton width={130} height={28} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+          <Skeleton width={200} height={14} style={{ marginTop: 6 }} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+        </div>
+        <Skeleton width="100%" height={40} borderRadius={8} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="stat-card space-y-3">
+              <div className="flex items-center gap-3">
+                <Skeleton circle width={40} height={40} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+                <div className="flex-1">
+                  <Skeleton width="60%" height={14} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+                  <Skeleton width="40%" height={12} style={{ marginTop: 4 }} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+                </div>
+              </div>
+              <Skeleton width="75%" height={12} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+              <div className="flex items-center justify-between pt-2 border-t border-border/50">
+                <Skeleton width={50} height={12} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+                <Skeleton width={60} height={16} borderRadius={4} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     );
   }

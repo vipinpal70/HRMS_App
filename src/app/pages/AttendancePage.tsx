@@ -2,13 +2,14 @@
 
 import { useState, useEffect, useCallback, useTransition } from 'react';
 import {
-  Clock, CheckCircle2, XCircle, MapPin, Wifi, Loader2,
-  Users, ChevronLeft, ChevronRight, Download, CalendarDays,
+  Clock, Users, ChevronLeft, ChevronRight, Download, CalendarDays,
   TrendingUp, UserCheck, AlertCircle, Coffee, Search, X
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { getMyAttendance, getEmployeesAttendance, getEmployeeListForFilter } from '../actions/attendance';
 import { toast } from 'react-hot-toast';
+import Skeleton from 'react-loading-skeleton';
+import 'react-loading-skeleton/dist/skeleton.css';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -223,8 +224,34 @@ function AttendanceTable({
 }) {
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-40">
-        <Loader2 className="w-7 h-7 animate-spin text-muted-foreground" />
+      <div className="p-4 space-y-3">
+        {/* Table header skeleton */}
+        <div className="flex gap-3 pb-3 border-b border-border/40">
+          {showEmployee && <Skeleton width={120} height={14} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />}
+          <Skeleton width={90} height={14} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+          <Skeleton width={70} height={14} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+          <Skeleton width={70} height={14} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+          <Skeleton width={60} height={14} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+          <Skeleton width={60} height={14} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+          <Skeleton width={70} height={14} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+        </div>
+        {/* Table rows skeleton */}
+        {Array.from({ length: 8 }).map((_, i) => (
+          <div key={i} className="flex items-center gap-3 py-2">
+            {showEmployee && (
+              <div className="flex items-center gap-2">
+                <Skeleton circle width={28} height={28} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+                <Skeleton width={100} height={14} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+              </div>
+            )}
+            <Skeleton width={90} height={14} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+            <Skeleton width={65} height={14} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+            <Skeleton width={65} height={14} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+            <Skeleton width={55} height={14} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+            <Skeleton width={55} height={14} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+            <Skeleton width={65} height={22} borderRadius={12} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+          </div>
+        ))}
       </div>
     );
   }
@@ -375,7 +402,21 @@ function MyAttendanceView() {
       </div>
 
       {/* Stats */}
-      {!loading && records.length > 0 && <StatsRow records={records} />}
+      {loading ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-3 rounded-xl border border-border/50 bg-card p-4" style={{ borderLeftWidth: '4px', borderLeftColor: 'hsl(var(--muted))' }}>
+              <Skeleton circle width={36} height={36} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+              <div>
+                <Skeleton width={50} height={20} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+                <Skeleton width={40} height={12} style={{ marginTop: 4 }} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        records.length > 0 && <StatsRow records={records} />
+      )}
 
       {/* Table */}
       <div className="stat-card !p-0 overflow-hidden">
@@ -514,7 +555,21 @@ function AllEmployeesView() {
       )}
 
       {/* Stats – reflect the current search/filter */}
-      {!loading && filteredRecords.length > 0 && <StatsRow records={filteredRecords} />}
+      {loading ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-3 rounded-xl border border-border/50 bg-card p-4" style={{ borderLeftWidth: '4px', borderLeftColor: 'hsl(var(--muted))' }}>
+              <Skeleton circle width={36} height={36} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+              <div>
+                <Skeleton width={50} height={20} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+                <Skeleton width={40} height={12} style={{ marginTop: 4 }} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        filteredRecords.length > 0 && <StatsRow records={filteredRecords} />
+      )}
 
       {/* Table */}
       <div className="stat-card !p-0 overflow-hidden">

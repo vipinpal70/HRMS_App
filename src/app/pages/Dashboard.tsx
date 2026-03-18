@@ -26,6 +26,8 @@ import { getQuoteOfDay } from '../actions/quotes';
 import { getCompanySettings } from '../actions/settings';
 import { toast } from 'react-hot-toast';
 import Link from 'next/link';
+import Skeleton from 'react-loading-skeleton';
+import 'react-loading-skeleton/dist/skeleton.css';
 
 const holidayTypeStyles = {
   holiday: 'bg-destructive/10 text-destructive',
@@ -188,8 +190,7 @@ export default function Dashboard() {
   }, [currentYear]);
 
 
-
-
+  // Handle Check In
   const handleCheckIn = async () => {
     setLoading(true);
 
@@ -234,6 +235,7 @@ export default function Dashboard() {
     );
   };
 
+  // Handle Check Out
   const handleCheckOut = async () => {
     setLoading(true);
 
@@ -256,6 +258,7 @@ export default function Dashboard() {
     );
   };
 
+  // Perform Check Out
   const performCheckOut = async (lat: number, lng: number) => {
     try {
       const result = await checkOut(lat, lng);
@@ -353,8 +356,62 @@ export default function Dashboard() {
 
   if (initialLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+      <div className="space-y-6 animate-fade-up">
+        {/* Header skeleton */}
+        <div>
+          <Skeleton width={280} height={28} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+          <Skeleton width={180} height={14} style={{ marginTop: 6 }} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+          <Skeleton width="100%" height={38} borderRadius={8} style={{ marginTop: 8 }} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+        </div>
+
+        {/* Check-in card skeleton */}
+        <div className="stat-card flex flex-col sm:flex-row items-start sm:items-center gap-5">
+          <div className="flex-1 space-y-3">
+            <div className="flex items-center gap-3">
+              <Skeleton circle width={12} height={12} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+              <Skeleton width={140} height={20} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+            </div>
+            <div className="flex gap-3">
+              <Skeleton width={60} height={14} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+              <Skeleton width={60} height={14} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+            </div>
+          </div>
+          <Skeleton width={120} height={40} borderRadius={8} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+        </div>
+
+        {/* Office hours bar skeleton */}
+        <Skeleton width="100%" height={40} borderRadius={8} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+
+        {/* Stats grid skeleton */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="stat-card">
+              <Skeleton circle width={20} height={20} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+              <Skeleton width={60} height={28} style={{ marginTop: 8 }} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+              <Skeleton width={80} height={12} style={{ marginTop: 4 }} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+            </div>
+          ))}
+        </div>
+
+        {/* Calendar + Tasks skeleton */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="stat-card">
+            <Skeleton width={100} height={18} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+            <Skeleton width="100%" height={250} borderRadius={8} style={{ marginTop: 12 }} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+          </div>
+          <div className="stat-card space-y-3">
+            <Skeleton width={160} height={18} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-3 py-2">
+                <Skeleton circle width={32} height={32} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+                <div className="flex-1">
+                  <Skeleton width="70%" height={14} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+                  <Skeleton width="40%" height={12} style={{ marginTop: 4 }} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     )
   }
@@ -373,9 +430,9 @@ export default function Dashboard() {
       </div>
 
       {/* Check-in Card */}
-      <div className="stat-card flex flex-col sm:flex-row items-start sm:items-center gap-5">
+      <div className="stat-card flex flex-col sm:flex-row items-center gap-5">
         <div className="flex-1 space-y-3">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center justify-center md:justify-start gap-3">
             <div
               className={`w-3 h-3 rounded-full ${checkedIn ? 'bg-success pulse-dot' : 'bg-muted-foreground/30'
                 }`}
@@ -386,13 +443,13 @@ export default function Dashboard() {
           </div>
 
           {checkedIn && (
-            <div className="font-mono text-3xl font-bold tracking-wider text-primary">
+            <div className="font-mono text-5xl md:text-4xl font-bold tracking-wider text-primary">
               {formatTime(elapsed)}
             </div>
           )}
 
           {/* Validation Status */}
-          <div className="flex flex-wrap gap-3 text-sm">
+          <div className="flex flex-wrap justify-center md:justify-start gap-3 text-sm">
             <span className="flex items-center gap-1.5">
               <Wifi className="w-4 h-4" />
               IP:
@@ -585,8 +642,8 @@ export default function Dashboard() {
         </div>
 
         {pendingTasks.length === 0 ? (
-          <div className="text-center py-6 bg-muted/5 rounded-xl border border-dashed border-border/50">
-            <CheckCircle2 className="w-8 h-8 text-success/30 mx-auto mb-2" />
+          <div className="flex gap-2 items-center justify-center py-4 bg-muted/5 rounded-xl border border-dashed border-border/50">
+            <CheckCircle2 className="w-6 h-6 text-success/30" />
             <p className="text-sm text-muted-foreground">All caught up! No pending tasks.</p>
           </div>
         ) : (
