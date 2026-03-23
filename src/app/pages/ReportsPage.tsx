@@ -433,7 +433,7 @@ export default function ReportsPage() {
         <style>{pageBreakStyle}</style>
         <div className="space-y-6 animate-fade-up">
           {/* Header */}
-          <div className="flex justify-between items-start">
+          <div className="flex flex-col md:flex-row justify-between items-start">
             <div>
               <h1 className="text-2xl font-bold">
                 Reports & Analytics {selectedEmployee && `- ${selectedEmployee.name}`}
@@ -448,7 +448,7 @@ export default function ReportsPage() {
                   toPDF();
                 }, 1000);
               }}
-              className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/80 transition-colors text-sm font-medium"
+              className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/80 transition-colors text-sm font-medium mt-4 md:mt-0"
             >
               Export to PDF
             </button>
@@ -465,7 +465,7 @@ export default function ReportsPage() {
                   placeholder="Type employee name to search..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2 text-sm pr-10 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border rounded-lg px-3 py-2 text-xs pr-10 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               {searchLoading && (

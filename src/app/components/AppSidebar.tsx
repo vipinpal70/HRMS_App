@@ -16,13 +16,10 @@ import {
   ChevronRight,
   ChevronUp,
   User,
-  Shield,
   Users,
   Sun,
   Moon,
-  Menu,
   X,
-  Bell
 } from 'lucide-react';
 import NotificationBell from './NotificationBell';
 import { getCompanySettings } from '@/app/actions/settings';

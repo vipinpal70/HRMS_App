@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Bell, CheckCheck, FileText, ListTodo, Clock, Megaphone, Info, Trash2 } from 'lucide-react';
+import { Bell, Album, FileText, ListTodo, Clock, Megaphone, Info, Trash2, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useNotificationContext } from '../context/NotificationContext';
 import { formatDistanceToNow } from 'date-fns';
@@ -102,7 +102,7 @@ export default function NotificationBell({ showFullList = true }: NotificationBe
                       }}
                       className="text-[10px] font-bold text-primary hover:text-primary/80"
                     >
-                      Mark all as read
+                      <Album className="w-3 h-3" />
                     </button>
                   )}
                   <button
@@ -112,7 +112,7 @@ export default function NotificationBell({ showFullList = true }: NotificationBe
                     }}
                     className="text-[10px] font-bold text-destructive hover:text-destructive/80"
                   >
-                    Clear All
+                    <X className="w-4 h-4" />
                   </button>
                 </div>
               )}
@@ -180,14 +180,14 @@ export default function NotificationBell({ showFullList = true }: NotificationBe
                     onClick={async () => { await markAllAsRead(); }}
                     className="text-xs text-primary hover:underline"
                   >
-                    Mark all read
+                    <Album className="w-3 h-3" />
                   </button>
                 )}
                 <button
                   onClick={async () => { await clearAll(); }}
                   className="flex items-center gap-1 text-xs text-destructive hover:text-destructive/80"
                 >
-                  <Trash2 className="w-3 h-3" /> Clear All
+                  <X className="w-3 h-3" />
                 </button>
               </div>
             )}

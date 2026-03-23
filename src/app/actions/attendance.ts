@@ -117,22 +117,7 @@ export async function checkIn(latitude: number, longitude: number) {
       .eq('date', today)
       .single();
 
-    // 2. Enforce check-in limits per work_type
-    if (existing) {
-      if (existing.check_in_1 && existing.check_in_2) {
-        return { error: 'Maximum 2 check-ins per day already reached.' };
-      }
-      // For a second check-in, the first session must be closed (check_out_1 set)
-      if (existing.check_in_1 && !existing.check_out_1) {
-        return { error: 'Please check out from your current session before starting a new one.' };
-      }
-      // Office work type: only 1 check-in/check-out allowed per day
-      if (existing.work_type === 'office' && existing.check_in_1 && existing.check_out_1) {
-        return { error: 'You cannot check in again.' };
-      }
-    }
-
-    // 3. Approval-first: check for approved WFH or Hybrid leave today
+    // 2. Approval-first: check for approved WFH or Hybrid leave today
     const approval = await getApprovedLeaveForDate(supabase, user.id, today);
 
     let workType: string;
@@ -160,6 +145,21 @@ export async function checkIn(latitude: number, longitude: number) {
       workType = 'office';
     }
 
+    // 3. Enforce check-in limits per work_type
+    if (existing) {
+      if (existing.check_in_1 && existing.check_in_2) {
+        return { error: 'Maximum 2 check-ins per day already reached.' };
+      }
+      // For a second check-in, the first session must be closed (check_out_1 set)
+      if (existing.check_in_1 && !existing.check_out_1) {
+        return { error: 'Please check out from your current session before starting a new one.' };
+      }
+      // Office work type: only 1 check-in/check-out allowed per day
+      if (workType === 'office' && existing.check_in_1 && existing.check_out_1) {
+        return { error: 'You cannot check in again.' };
+      }
+    }
+
     // 4. Determine status
     // Late (after 10:30 AM) only applies to office check-ins
     // WFH and Hybrid are always 'present'
@@ -185,9 +185,15 @@ export async function checkIn(latitude: number, longitude: number) {
       if (error) throw error;
     } else {
       // Second check-in (after first checkout)
+      const updateData: Record<string, any> = { check_in_2: nowIso };
+      // Check if work_type changed (e.g., they checked in as office earlier, but now have an approved WFH)
+      if (workType !== existing.work_type) {
+        updateData.work_type = workType;
+        updateData.status = statusValue; // Update status in case it was late but now is remote
+      }
       const { error } = await supabase
         .from('attendance')
-        .update({ check_in_2: nowIso })
+        .update(updateData)
         .eq('id', existing.id);
       if (error) throw error;
     }
@@ -227,8 +233,12 @@ export async function checkOut(latitude: number, longitude: number) {
       return { error: 'No check-in record found for today.' };
     }
 
+    // 1.5. Check if user currently has an approved leave/wfh
+    const approval = await getApprovedLeaveForDate(supabase, user.id, today);
+    const effectiveWorkType = approval ? approval.category : session.work_type;
+
     // Only enforce office hours for office work type
-    if (session.work_type === 'office' && !isWithinOfficeHours(now, settings.start, settings.end)) {
+    if (effectiveWorkType === 'office' && !isWithinOfficeHours(now, settings.start, settings.end)) {
       return { error: `Office check-out is only allowed between ${formatTimeDisplay(settings.start)} and ${formatTimeDisplay(settings.end)}.` };
     }
     const nowIso = new Date().toISOString();
@@ -264,6 +274,11 @@ export async function checkOut(latitude: number, longitude: number) {
       return { error: 'Both sessions already checked out for today.' };
     } else {
       return { error: 'No active check-in found to check out from.' };
+    }
+
+    // If their work_type changed (approval after check-in), update it
+    if (effectiveWorkType !== session.work_type) {
+      updates.work_type = effectiveWorkType;
     }
 
     // 3. Update Record

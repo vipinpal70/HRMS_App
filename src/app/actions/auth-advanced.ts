@@ -66,6 +66,17 @@ export async function loginWithIp(email: string) {
       return { error: 'Access Denied: You are not at the office (IP Mismatch).' };
     }
 
+    // 3.5 Check if user exists
+    const { data: existingUser } = await supabaseAdmin
+      .from('profiles')
+      .select('id')
+      .eq('email', email)
+      .single();
+
+    if (!existingUser) {
+      return { error: 'Account not found. Please sign up first.' };
+    }
+
     // 4. Generate Magic Link (Instant Login)
     const host = headersList.get('host') || 'localhost:3000';
     const protocol = host.includes('localhost') ? 'http' : 'https';
@@ -110,6 +121,17 @@ export async function loginWithGps(email: string, lat: number, lng: number) {
 
     if (distance > maxRadius) {
       return { error: `Access Denied: You are ${Math.round(distance)}m away from office. Allowed: ${maxRadius}m. ${lat}, ${lng}` };
+    }
+
+    // 2.5 Check if user exists
+    const { data: existingUser } = await supabaseAdmin
+      .from('profiles')
+      .select('id')
+      .eq('email', email)
+      .single();
+
+    if (!existingUser) {
+      return { error: 'Account not found. Please sign up first.' };
     }
 
     // 3. Generate Magic Link

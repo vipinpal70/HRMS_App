@@ -1,0 +1,131 @@
+login/signup page:
+ - inputs: 
+    - login:
+      - via mail:
+        - email: should not be empty | should send alert if email is wrong or field is empty
+        - password: should not be empty|should send alert if password is wrong or field is empty
+      - via location:
+        - email: should not be empty | should be a valid email | should send alert if email is wrong or field is empty | if location is not matching to the office geofence loc, then send a alert msg
+
+    - signup:
+      - name: should not be empty | should send alert if name is wrong or field is empty
+      - phone: should not be empty | should send alert if phone is wrong or field is empty | should send alert if phone is not in 10 digits
+      - dob: should not be empty | should send alert if dob is wrong or field is empty
+      - email: should not be empty | should send alert if email is wrong or field is empty
+      - password: should not be empty|should send alert if password is wrong or field is empty
+      - confirm_password: should not be empty|should send alert if password is wrong or field is empty|should send alert if password and confirm_password are not same
+
+bug: when trying to login with geolocation and entering a ramdom mail, it is not checking if the mail is already exist or not and creating a new user from that mail and setting the name as mail. also explain how without password, new user acc is creating.
+        
+Dashboard:
+  check-in:
+    - hybrid: if user is in hybrid mode he can check-in/check-out 2 times anytime
+    - office: bydefault if user check-in from office loc and between office time then it will be office check-in
+    - wfh: bydefault if user check-in from home or any other loc and between office time then it will be wfh check-in
+    - leave: if user is on leave then he can't check-in | mark user as absent
+    - holiday: if it public holiday user cannot check-in
+
+  check-out:
+    - hybrid: if user is in hybrid mode he can check-in/check-out 2 times anytime
+    - office: bydefault if user check-out from office loc and between office time then it will be office check-out
+    - wfh: bydefault if user check-out from home or any other loc and between office time then it will be wfh check-out
+    - leave: if user is on leave then he can't check-out | mark user as absent
+    - holiday: if it public holiday user cannot check-out
+  
+  insights:
+   - present days: should calculate per month attendance
+   - task done: should calculate per month task done
+   - avg hours: should calculate per month | sum of total hours / total working days
+   - work days: total work days in current month
+
+  calendar|upcoming events:
+    - should show all the public holidays and events | birthday months of emp
+  
+  Today's tasks|pending tasks:
+    - should show all the tasks assigned to the user on current date
+    - should show limited pending tasks from tasks list | if more than 3 tasks are pending then show "show more" button
+
+Attendance:
+  filtering:
+    - attendance should show month wise, and filter on the basis of per month
+    - default state should be current month
+  list view:
+    - should show all dates starting from the beginning of the selected month
+    - weekends (Saturday, Sunday) should be explicitly marked and excluded from absence calculation unless an employee checks in
+    - public holidays should be marked
+  absent marking:
+    - if an employee has no check-in/out and is not on an approved leave or on a weekend/holiday, they must be marked absent automatically
+  record updates:
+    - if an employee receives an approved same-day WFH request after already checking in as 'office', the visual and underlying record work_type should successfully update
+
+Leave & WFH:
+  apply leave form:
+    - types: user can select full-day, half-day, WFH, and Hybrid
+    - required fields: start date, end date, component, and reason must not be empty
+    - restrictions: past dates should either warning user or be cleanly blocked (unless overridden by Admin)
+    - end date > start date logic must be enforced
+  leave tracking:
+    - past requests should be grouped logically by "Today", "Yesterday", etc.
+    - leave history must show status colors consistently (pending/approved/cancelled/rejected)
+  balances:
+    - new users should have 20 total leaves by default
+    - deducting leave: should strictly deduct 1 from remaining_leaves only for working days (exclude weekends when computing leave duration)
+    - cancelling leave: should refund the leave days back to remaining_leaves if already deducted
+  retraction flow:
+    - users can cancel 'Pending' requests seamlessly
+    - users retracting 'Approved' requests triggers 'retraction_pending' status and notifies HR/Admin
+
+Tasks:
+  task creation (Admin/HR):
+    - should require at least one assigned employee
+    - should require title, start date
+    - priority default should be medium
+  task creation (Employee):
+    - 'Add My Task' feature must allow self-assignment
+    - triggers notification to all Admins when an employee self-assigns a task
+  list view:
+    - max items logic: initially only 6 tasks should render, "See More" button correctly lists the rest without issues
+    - date filter: tasks are accurately sliced by Week or Month via tab toggle
+    - text search: should find users or task title cleanly
+  status tracking:
+    - update dropdown ('Pending', 'In Progress', 'Completed') should trigger immediate optimistic UI update
+    - users should only be able to edit task priorities/details they own unless they are HR/Admin
+
+Team:
+  directory:
+    - listing: all employees are visually listed, displaying name, role, email
+    - searching: text filter quickly isolates specific member
+  RBAC visibility:
+    - employees only see public card info
+    - HR/Admin has option to navigate and view individual member stats
+
+Employees (Admin & HR Only):
+  invite & onboarding:
+    - admins can securely add new members and provision them with defaults
+  data access:
+    - attendance overview: admins can view individual month-wise attendance of any target employee
+    - leave management: admins can approve/reject target employee's leaves
+
+Calendar:
+  display events:
+    - must load comprehensive events containing birthdays, holidays, and logged-in user's own approved leave days
+    - toggle functionality or popover helps preview event details on click
+  month surfing:
+    - easy next/prev month pagination keeps event logic accurate
+
+Profile:
+  display:
+    - shows accurate details of the current logged-in employee (Name, designation, Joining date)
+  edits:
+    - updates persist to Supabase seamlessly (e.g. valid phone and name)
+
+Reports (Admin & HR Only):
+  report generation:
+    - month filter outputs comprehensive snapshot of present days, leaves, absent days, and task completion metrics per user
+    - exports effectively output valid formats (PDF/CSV) with columns clearly mapped
+
+Settings (Admin Only):
+  configurations:
+    - office coordinates strictly accept valid Latitude/Longitude
+    - check-in radius sets a hard boundary for geo-validation in check-in tool
+    - office start time / end time sets boundaries for when tardiness applies

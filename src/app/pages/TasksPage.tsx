@@ -108,6 +108,7 @@ export default function TasksPage() {
 
   const [dateRange, setDateRange] = useState(getMonthDates);
   const [timeFilter, setTimeFilter] = useState<'week' | 'month'>('month');
+  const [visibleTasksCount, setVisibleTasksCount] = useState<number>(6);
 
   const canManageTasks = user?.role === 'admin' || user?.role === 'hr';
 
@@ -153,6 +154,11 @@ export default function TasksPage() {
   useEffect(() => {
     checkAndNotifyNoTasks().catch(() => { });
   }, []);
+
+  // Reset visible tasks when filters change
+  useEffect(() => {
+    setVisibleTasksCount(6);
+  }, [searchQuery, employeeFilter, timeFilter, viewAll]);
 
   const handleCreateTask = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -256,8 +262,10 @@ export default function TasksPage() {
     return matchesSearch;
   });
 
+  const displayedTasks = filtered.slice(0, visibleTasksCount);
+
   // Grouping Logic
-  const groupedTasks = filtered.reduce((acc, task) => {
+  const groupedTasks = displayedTasks.reduce((acc, task) => {
     const date = task.start_day;
     if (!acc[date]) acc[date] = [];
     acc[date].push(task);
@@ -715,6 +723,15 @@ export default function TasksPage() {
               </div>
             </div>
           ))
+        )}
+
+        {/* See More Button */}
+        {!loading && filtered.length > visibleTasksCount && (
+          <div className="flex justify-center pt-6">
+            <Button variant="outline" onClick={() => setVisibleTasksCount(filtered.length)}>
+              See More
+            </Button>
+          </div>
         )}
       </div>
 
