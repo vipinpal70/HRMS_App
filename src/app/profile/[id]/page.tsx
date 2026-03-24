@@ -69,7 +69,12 @@ export default function ProfilePage() {
     const handleUpdate = async (e: React.FormEvent) => {
         e.preventDefault();
         startTransition(async () => {
-            const result = await updateProfile(id, formData);
+            const submitData = { ...formData };
+            if (!submitData.dob || submitData.dob.trim() === '') {
+                (submitData as any).dob = null;
+            }
+
+            const result = await updateProfile(id, submitData);
             if (result.success) {
                 toast.success(result.message || 'Profile updated');
                 setIsEditing(false);

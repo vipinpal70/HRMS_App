@@ -30,6 +30,7 @@ const navItems = [
   { icon: Clock, label: 'Attendance', path: '/attendance', roles: ['emp', 'admin', 'hr'] },
   { icon: ListTodo, label: 'Tasks', path: '/tasks', roles: ['emp', 'admin', 'hr'] },
   { icon: FileText, label: 'Leave & WFH', path: '/leave', roles: ['emp', 'admin', 'hr'] },
+  { icon: Users, label: 'Team Members', path: '/team', roles: ['emp'] },
   { icon: CalendarDays, label: 'Calendar', path: '/calendar', roles: ['admin', 'hr'] },
   { icon: BarChart3, label: 'Reports', path: '/reports', roles: ['admin', 'hr'] },
   { icon: Users, label: 'Employees', path: '/employees', roles: ['admin', 'hr'] },
@@ -171,17 +172,6 @@ export default function AppSidebar({
                     <User className="w-4 h-4 text-muted-foreground" />
                     <span>My Profile</span>
                   </button>
-
-                  {/* <button
-                    onClick={() => {
-                      window.location.href = '/team';
-                      setUserMenuOpen(false);
-                    }}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-muted transition-colors text-left"
-                  >
-                    <Users className="w-4 h-4 text-muted-foreground" />
-                    <span>Team Members</span>
-                  </button> */}
 
                   <div className="px-4 py-2 hover:bg-muted transition-colors cursor-pointer">
                     <NotificationBell showFullList={false} />

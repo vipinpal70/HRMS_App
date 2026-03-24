@@ -95,7 +95,12 @@ export async function updateProfile(id: string, updates: Partial<Profile>) {
 
         allowedFields.forEach(field => {
             if (updates[field] !== undefined) {
-                safeUpdates[field] = updates[field];
+                const isDobEmpty = field === 'dob' && (!updates[field] || String(updates[field]).trim() === '');
+                if (isDobEmpty) {
+                    safeUpdates[field] = null;
+                } else {
+                    safeUpdates[field] = updates[field];
+                }
             }
         });
 
