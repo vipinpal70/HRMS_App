@@ -95,12 +95,12 @@ export default function TeamPage() {
           >
             {/* Background Accent */}
             <div className="absolute top-0 right-0 w-24 h-24 bg-primary/5 rounded-full -mr-12 -mt-12 transition-transform group-hover:scale-150 duration-500" />
-            
+
             <div className="relative flex flex-col items-center text-center space-y-4">
               <div className="relative">
                 <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center text-primary font-bold text-xl shadow-inner overflow-hidden border-2 border-background">
-                  {emp.avatar ? (
-                    <img src={emp.avatar} alt={emp.name} className="w-full h-full object-cover" />
+                  {emp.avatar_url ? (
+                    <img src={emp.avatar_url} alt={emp.name} className="w-full h-full object-cover" />
                   ) : (
                     emp.name.split(' ').map(n => n[0]).join('')
                   )}
@@ -122,7 +122,7 @@ export default function TeamPage() {
                   <Mail className="w-3.5 h-3.5" />
                   <span className="truncate max-w-[180px]">{emp.email}</span>
                 </div>
-                
+
                 <div className="flex items-center gap-2 text-xs text-muted-foreground justify-center">
                   <Calendar className="w-3.5 h-3.5" />
                   <span>DOB: {formatDate(emp.dob)}</span>
