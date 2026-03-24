@@ -117,8 +117,8 @@ export default function EmployeesPage() {
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary font-bold text-sm group-hover:bg-primary group-hover:text-primary-foreground transition-colors overflow-hidden">
-                  {emp.avatar ? (
-                    <img src={emp.avatar} alt={emp.name} className="w-full h-full object-cover" />
+                  {emp.avatar_url ? (
+                    <img src={emp.avatar_url} alt={emp.name} className="w-full h-full object-cover" />
                   ) : (
                     emp.name.split(' ').map(n => n[0]).join('')
                   )}
