@@ -3,7 +3,8 @@
 import { useState, useEffect, useTransition } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/app/context/AuthContext';
-import { getProfile, updateProfile, deleteProfile, Profile } from '@/app/actions/profile';
+import { getProfile, updateProfile, deleteProfile, Profile, uploadAvatar } from '@/app/actions/profile';
+import { createClient } from '@/lib/supabase/client';
 import {
     User,
     Mail,
@@ -18,6 +19,7 @@ import {
     Palmtree,
     Trash2,
     Calendar,
+    Upload
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { Mosaic } from 'react-loading-indicators';
@@ -31,6 +33,7 @@ export default function ProfilePage() {
     const [isEditing, setIsEditing] = useState(false);
     const [isPending, startTransition] = useTransition();
     const [isDeleting, setIsDeleting] = useState(false);
+    const [isUploading, setIsUploading] = useState(false);
 
     // Form State
     const [formData, setFormData] = useState({
@@ -94,6 +97,34 @@ export default function ProfilePage() {
         }
     };
 
+    // handle user avatar upload
+    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file || !profile) return;
+
+        setIsUploading(true);
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const result = await uploadAvatar(profile.id, formData);
+
+            if (result.error) {
+                toast.error(result.error);
+                return;
+            }
+
+            setProfile(prev => prev ? { ...prev, avatar_url: result.url } : null);
+            toast.success('Avatar updated!');
+
+        } catch (err) {
+            console.error(err);
+            toast.error('Failed to upload avatar');
+        } finally {
+            setIsUploading(false);
+        }
+    };
+
     if (loading) {
         return (
             <div className="flex items-center justify-center min-h-[60vh]">
@@ -125,18 +156,33 @@ export default function ProfilePage() {
 
                 <div className="absolute -bottom-12 left-8 flex items-end gap-6">
                     <div className="relative">
-                        <div className="w-24 h-24 md:w-32 md:h-32 rounded-2xl bg-sidebar-background dark:bg-slate-300 border-4 border-background shadow-xl flex items-center justify-center text-4xl font-bold text-white dark:text-black">
-                            {profile.avatar ? (
-                                <img src={profile.avatar} alt={profile.name} className="w-full h-full object-cover rounded-xl" />
+                        <div className="w-24 h-24 md:w-32 md:h-32 rounded-2xl bg-sidebar-background dark:bg-slate-300 border-4 border-background shadow-xl flex items-center justify-center text-4xl font-bold text-white dark:text-black relative overflow-hidden">
+                            {profile.avatar_url ? (
+                                <img src={profile.avatar_url} alt={profile.name} className={`w-full h-full object-cover rounded-xl ${isUploading ? 'opacity-50' : ''}`} />
                             ) : (
-                                profile.name?.charAt(0) || 'U'
+                                <span className={isUploading ? 'opacity-50' : ''}>{profile.name?.charAt(0) || 'U'}</span>
+                            )}
+                            {isUploading && (
+                                <div className="absolute inset-0 flex items-center justify-center bg-black/20 rounded-xl">
+                                    <Loader2 className="w-8 h-8 animate-spin text-white" />
+                                </div>
                             )}
                         </div>
-                        {/* {canEdit && (
-                            <button className="absolute bottom-2 right-2 p-1.5 bg-background border border-border rounded-lg shadow-sm hover:bg-muted transition-colors">
-                                <Edit3 className="w-4 h-4 text-muted-foreground" />
-                            </button>
-                        )} */}
+                        <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleImageUpload}
+                            className="hidden"
+                            id="avatarUpload"
+                            disabled={isUploading}
+                        />
+
+                        <label
+                            htmlFor="avatarUpload"
+                            className={`absolute bottom-2 right-2 p-1 border rounded-lg text-xs transition-colors ${isUploading ? 'bg-muted cursor-not-allowed text-muted-foreground' : 'bg-background hover:bg-gray-200 dark:hover:bg-[#080c17] cursor-pointer'}`}
+                        >
+                            {isUploading ? 'Uploading...' : <Upload className="w-4 h-4" />}
+                        </label>
                     </div>
 
                     <div className="pb-2 hidden sm:block">

@@ -14,8 +14,6 @@ login/signup page:
       - email: should not be empty | should send alert if email is wrong or field is empty
       - password: should not be empty|should send alert if password is wrong or field is empty
       - confirm_password: should not be empty|should send alert if password is wrong or field is empty|should send alert if password and confirm_password are not same
-
-bug: when trying to login with geolocation and entering a ramdom mail, it is not checking if the mail is already exist or not and creating a new user from that mail and setting the name as mail. also explain how without password, new user acc is creating.
         
 Dashboard:
   check-in:
@@ -129,3 +127,13 @@ Settings (Admin Only):
     - office coordinates strictly accept valid Latitude/Longitude
     - check-in radius sets a hard boundary for geo-validation in check-in tool
     - office start time / end time sets boundaries for when tardiness applies
+
+
+Bugs:
+fixed:
+  - auth issue: when trying to login with geolocation and entering a ramdom mail, it is not checking if the mail is already exist or not and creating a new user from that mail and setting the name as mail. also explain how without password, new user acc is creating.
+
+not fixed:
+  - clear notification issue: the notifications do not dismiss when clear button is clicked and also not showing any error message.
+  - task notification: do not send pending task notification to admin, it is only for employees
+  - Reports: remove leaves in chart and only keep absent

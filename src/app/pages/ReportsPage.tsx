@@ -6,6 +6,7 @@ import HighchartsReact from "highcharts-react-official";
 import { usePDF } from 'react-to-pdf';
 import Skeleton from 'react-loading-skeleton';
 import 'react-loading-skeleton/dist/skeleton.css';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 
 import {
   getReportData,
@@ -15,9 +16,11 @@ import {
   getMonthlyTasksData,
   getQuarterlyTasksData
 } from "../actions/report";
+import { getEmployees } from "../actions/profile";
 
 import { getEmployeesAttendance } from "../actions/attendance";
-import { Search } from "lucide-react";
+import { Search, Download } from "lucide-react";
+import { Mosaic } from "react-loading-indicators";
 
 // Add page break styling
 const pageBreakStyle = `
@@ -49,6 +52,8 @@ export default function ReportsPage() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dataLoading, setDataLoading] = useState(false);
+  const [employeeFilter, setEmployeeFilter] = useState<string>('all');
+  const [allEmployees, setAllEmployees] = useState<any[]>([]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -75,6 +80,8 @@ export default function ReportsPage() {
           setError(reportResult?.error || monthlyResult?.error || monthlyTasksResult?.error || weeklyTasksResult?.error);
           return;
         }
+        const employeesResult = await getEmployees();
+        setAllEmployees(employeesResult || []);
         setMonthlyData(monthlyResult?.data || []);
         setMonthlyTasksData(monthlyTasksResult?.data || []);
         console.log('Weekly tasks data for all employees:', weeklyTasksResult?.data);
@@ -122,6 +129,7 @@ export default function ReportsPage() {
 
   const handleEmployeeSelect = async (emp: any) => {
     setSelectedEmployee(emp);
+    setEmployeeFilter(emp.id);
     setSearch(""); // Clear search to hide the dropdown
     setEmployees([]);
     setDataLoading(true);
@@ -176,6 +184,7 @@ export default function ReportsPage() {
 
   const handleClearSelection = async () => {
     setSelectedEmployee(null);
+    setEmployeeFilter('all');
     setEmployeeReport([]);
     setSearch("");
     setDataLoading(true);
@@ -355,8 +364,7 @@ export default function ReportsPage() {
       { name: "Present", y: presentPercentage, color: customColors.Present },
       { name: "Late", y: latePercentage, color: customColors.Late },
       { name: "WFH", y: wfhPercentage, color: customColors.WFH },
-      { name: "Leave", y: leavePercentage, color: customColors.Leave },
-      { name: "Absent", y: absentPercentage, color: customColors.Absent }
+      { name: "Absent", y: absentCombined, color: customColors.Absent }
     ];
 
     const options: Highcharts.Options = {
@@ -448,15 +456,42 @@ export default function ReportsPage() {
                   toPDF();
                 }, 1000);
               }}
-              className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/80 transition-colors text-sm font-medium mt-4 md:mt-0"
+              className="flex items-center px-4 py-2 gap-2 bg-primary text-white rounded-lg hover:bg-primary/80 transition-colors text-sm font-medium mt-4 md:mt-0"
             >
+              <Download className="w-4 h-4" />
               Export to PDF
             </button>
           </div>
           <div className="stat-card">
-            <h3 className="font-semibold mb-4">
-              Search Employee by Name
-            </h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold">
+                Search Employee by Name
+              </h3>
+              <div className="w-64">
+                <Select value={employeeFilter} onValueChange={(val) => {
+                  setEmployeeFilter(val);
+                  if (val === 'all') {
+                    handleClearSelection();
+                  } else {
+                    const emp = allEmployees.find(e => e.id === val);
+                    if (emp) handleEmployeeSelect(emp);
+                  }
+                }}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="All Employees" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Employees</SelectItem>
+                    {allEmployees.map(emp => (
+                      <SelectItem key={emp.id} value={emp.id}>
+                        {emp.name || emp.email}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
             <div className="relative">
               <div className="flex items-center gap-2">
                 <Search className="w-5 h-5 text-muted-foreground" />
@@ -517,10 +552,10 @@ export default function ReportsPage() {
             {selectedEmployee && (
               <div className="mb-6 p-4 border rounded-lg">
                 <h3 className="font-semibold mb-2">
-                  Employee Attendance Report
+                  Employee Report & Analytics
                 </h3>
                 <p className="text-sm text-gray-600">
-                  Showing detailed attendance for:
+                  Showing detailed report for:
                   <span className="font-semibold ml-2">{selectedEmployee.name}</span>
                   <span className="ml-2">(EMAIL ID: {selectedEmployee.email})</span>
                 </p>
@@ -530,8 +565,8 @@ export default function ReportsPage() {
             <div className="relative">
               {dataLoading && (
                 <div className="absolute inset-0 bg-background/90 backdrop-blur-sm flex flex-col items-center justify-center z-50 rounded-lg" style={{ minHeight: '400px' }}>
-                  <Skeleton width={60} height={60} circle baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-                  <p className="text-sm text-muted-foreground mt-4">Loading charts data...</p>
+                  <Mosaic color="#f88a10" size="small" />
+                  <p className="text-sm text-muted-foreground mt-4">Loading data...</p>
                 </div>
               )}
 

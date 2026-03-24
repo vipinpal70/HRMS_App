@@ -8,6 +8,7 @@ import { User } from '@supabase/supabase-js'
 export type UserRole = 'emp' | 'admin' | 'hr'
 
 interface Profile {
+  avatar_url: string | undefined
   id: string
   name: string
   email: string

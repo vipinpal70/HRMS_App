@@ -78,7 +78,7 @@ export async function getApprovedLeaveForDate(supabase: any, userId: string, dat
     .lte('start_day', date)
     .gte('end_day', date)
     .limit(1)
-    .single();
+    .maybeSingle();
   console.log('[getApprovedLeaveForDate] userId:', userId, 'date:', date, 'data:', data, 'error:', error);
   return data ?? null; // { id, category } or null
 }

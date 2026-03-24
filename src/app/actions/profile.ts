@@ -21,7 +21,7 @@ export interface Profile {
     add_on_leaves?: number;
     created_at?: string;
     updated_at?: string;
-    avatar?: string; // Kept for UI
+    avatar_url?: string;
     dob?: string;
 }
 
@@ -89,7 +89,7 @@ export async function updateProfile(id: string, updates: Partial<Profile>) {
 
         // Filter updates to allow only specific fields
         const adminOnlyFields: (keyof Profile)[] = ['total_leaves', 'add_on_leaves'];
-        const allowedFields: (keyof Profile)[] = ['name', 'designation', 'phone', 'dob'];
+        const allowedFields: (keyof Profile)[] = ['name', 'designation', 'phone', 'dob', 'avatar_url'];
 
         const safeUpdates: any = {};
 
@@ -168,5 +168,62 @@ export async function deleteProfile(id: string) {
     } catch (error: any) {
         console.error('deleteProfile Error:', error);
         return { error: error.message || 'Failed to delete profile' };
+    }
+}
+
+export async function uploadAvatar(id: string, formData: FormData) {
+    try {
+        const supabase = await createClient();
+
+        // Auth check with regular client
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return { error: 'Unauthorized' };
+
+        const { data: currentUserProfile } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', user.id)
+            .single();
+
+        const isAdmin = currentUserProfile?.role === 'admin';
+        const isOwner = user.id === id;
+
+        if (!isAdmin && !isOwner) {
+            return { error: 'Permission denied' };
+        }
+
+        const file = formData.get('file') as File;
+        if (!file) return { error: 'No file provided' };
+
+        // Use admin client to bypass RLS for storage
+        const supabaseAdmin = createAdminClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.SUPABASE_SERVICE_ROLE_KEY!
+        );
+
+        const fileExt = file.name.split('.').pop();
+        const filePath = `${id}/${id}.${fileExt}`;
+
+        const { error: uploadError } = await supabaseAdmin.storage
+            .from('avatars')
+            .upload(filePath, file, { upsert: true });
+
+        if (uploadError) throw uploadError;
+
+        const { data: publicUrlData } = supabaseAdmin.storage
+            .from('avatars')
+            .getPublicUrl(filePath);
+
+        await supabase
+            .from('profiles')
+            .update({ avatar_url: publicUrlData.publicUrl })
+            .eq('id', id);
+
+        revalidatePath(`/profile/${id}`);
+        return { success: true, url: publicUrlData.publicUrl };
+
+    } catch (error: any) {
+        console.error('uploadAvatar error:', error);
+        return { error: error.message };
     }
 }
