@@ -8,6 +8,7 @@ import {
     getUnreadCount,
     markAsRead as markAsReadAction,
     markAllAsRead as markAllAsReadAction,
+    clearAllNotifications as clearAllNotificationsAction,
 } from '../actions/notifications';
 import toast from 'react-hot-toast';
 
@@ -203,18 +204,14 @@ export function useNotifications() {
         setNotifications([]);
         setUnreadCount(0);
 
-        const supabase = supabaseRef.current;
-        const { error } = await supabase
-            .from('notifications')
-            .delete()
-            .eq('user_id', user!.id);
+        const result = await clearAllNotificationsAction();
 
-        if (error) {
+        if (result.error) {
             // Revert on failure
             setNotifications(previousNotifs);
             setUnreadCount(previousNotifs.filter(n => !n.is_read).length);
         }
-    }, [notifications, user]);
+    }, [notifications]);
 
     const refresh = useCallback(() => {
         fetchInitial();

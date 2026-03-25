@@ -170,3 +170,24 @@ export async function createNotification(
         return { error: error.message };
     }
 }
+
+// ─── Clear All Notifications ────────────────────────────────
+
+export async function clearAllNotifications() {
+    try {
+        const supabase = await createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return { error: 'Unauthorized' };
+
+        const { error } = await supabase
+            .from('notifications')
+            .delete()
+            .eq('user_id', user.id);
+
+        if (error) throw error;
+        return { success: true };
+    } catch (error: any) {
+        console.error('Error clearing all notifications:', error);
+        return { error: error.message };
+    }
+}

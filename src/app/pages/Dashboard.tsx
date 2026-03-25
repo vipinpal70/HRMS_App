@@ -628,9 +628,6 @@ export default function Dashboard() {
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <h2 className="font-semibold text-lg">Pending Tasks</h2>
-            <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-500 border-amber-500/20 uppercase tracking-wider font-bold">
-              Incomplete
-            </Badge>
           </div>
           {pendingTasks.length > 2 && (
             <Link href="/tasks">

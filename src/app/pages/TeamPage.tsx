@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useState } from 'react';
-import { Mail, Shield, Loader2, User, Search, X, Phone, Calendar, Users } from 'lucide-react';
+import { Mail, Shield, User, Search, X, Phone, Calendar, Users } from 'lucide-react';
 import { getEmployees, Profile } from '@/app/actions/profile';
-import Link from 'next/link';
 import { Mosaic } from 'react-loading-indicators';
 
 export default function TeamPage() {
@@ -61,7 +60,7 @@ export default function TeamPage() {
             </div>
             <h1 className="text-3xl font-extrabold tracking-tight">Team Members</h1>
           </div>
-          <p className="text-muted-foreground text-sm">Meet the amazing people behind our success</p>
+          <p className="text-muted-foreground text-sm">Meet the amazing people behind the work</p>
         </div>
 
         {/* Search bar */}
@@ -88,10 +87,8 @@ export default function TeamPage() {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {filteredEmployees.map((emp) => (
-          <Link
-            key={emp.id}
-            href={`/profile/${emp.id}`}
-            className="group relative bg-card hover:bg-accent/5 border border-border/50 rounded-2xl p-5 transition-all duration-300 hover:shadow-xl hover:-translate-y-1 overflow-hidden"
+          <div
+            className="group relative bg-card hover:bg-primary/5 border border-border/50 rounded-2xl p-5 transition-all duration-300 hover:shadow-xl hover:-translate-y-1 overflow-hidden"
           >
             {/* Background Accent */}
             <div className="absolute top-0 right-0 w-24 h-24 bg-primary/5 rounded-full -mr-12 -mt-12 transition-transform group-hover:scale-150 duration-500" />
@@ -100,19 +97,23 @@ export default function TeamPage() {
               <div className="relative">
                 <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center text-primary font-bold text-xl shadow-inner overflow-hidden border-2 border-background">
                   {emp.avatar_url ? (
-                    <img src={emp.avatar_url} alt={emp.name} className="w-full h-full object-cover" />
+                    <img
+                      src={emp.avatar_url}
+                      alt={emp.name}
+                      className="w-full h-full object-cover"
+                    />
                   ) : (
                     emp.name.split(' ').map(n => n[0]).join('')
                   )}
                 </div>
                 <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-lg bg-background shadow-sm border border-border flex items-center justify-center">
-                  <Shield className="w-3 h-3 text-primary" />
+                  {emp.role === 'admin' ? <Shield className="w-3 h-3 text-primary" /> : <User className="w-3 h-3 text-primary" />}
                 </div>
               </div>
 
               <div className="space-y-1">
                 <h3 className="font-bold text-lg group-hover:text-primary transition-colors">{emp.name}</h3>
-                <p className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-primary/10 text-primary w-fit mx-auto uppercase tracking-wider">
+                <p className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-blue-500/10 text-blue-500 w-fit mx-auto uppercase tracking-wider">
                   {emp.designation || 'Team Member'}
                 </p>
               </div>
@@ -136,7 +137,7 @@ export default function TeamPage() {
                 )}
               </div>
             </div>
-          </Link>
+          </div>
         ))}
       </div>
 

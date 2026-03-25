@@ -211,7 +211,10 @@ export async function uploadAvatar(id: string, formData: FormData) {
 
         const { error: uploadError } = await supabaseAdmin.storage
             .from('avatars')
-            .upload(filePath, file, { upsert: true });
+            .upload(filePath, file, {
+                upsert: true,
+                cacheControl: '31536000', // 1 year instead of 1 hour
+            });
 
         if (uploadError) throw uploadError;
 

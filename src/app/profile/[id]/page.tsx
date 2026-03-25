@@ -4,7 +4,6 @@ import { useState, useEffect, useTransition } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/app/context/AuthContext';
 import { getProfile, updateProfile, deleteProfile, Profile, uploadAvatar } from '@/app/actions/profile';
-import { createClient } from '@/lib/supabase/client';
 import {
     User,
     Mail,
@@ -163,7 +162,11 @@ export default function ProfilePage() {
                     <div className="relative">
                         <div className="w-24 h-24 md:w-32 md:h-32 rounded-2xl bg-sidebar-background dark:bg-slate-300 border-4 border-background shadow-xl flex items-center justify-center text-4xl font-bold text-white dark:text-black relative overflow-hidden">
                             {profile.avatar_url ? (
-                                <img src={profile.avatar_url} alt={profile.name} className={`w-full h-full object-cover rounded-xl ${isUploading ? 'opacity-50' : ''}`} />
+                                <img
+                                    src={profile.avatar_url}
+                                    alt={profile.name}
+                                    className={`w-full h-full object-cover rounded-xl ${isUploading ? 'opacity-50' : ''}`}
+                                />
                             ) : (
                                 <span className={isUploading ? 'opacity-50' : ''}>{profile.name?.charAt(0) || 'U'}</span>
                             )}

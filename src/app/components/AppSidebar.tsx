@@ -110,13 +110,13 @@ export default function AppSidebar({
         `}
       >
         {/* Logo & Mobile Close */}
-        <div className={`px-4 py-5 border-b border-sidebar-border ${collapsed ? 'w-[68px]' : 'w-[250px]'}`}>
+        <div className={`px-4 py-6 border-b border-sidebar-border ${collapsed ? 'w-[68px]' : 'w-[250px]'}`}>
           <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-sidebar-primary text-sidebar-primary-foreground font-bold text-sm">
-              {settings?.organization_name?.charAt(0)}
+            <div className="flex items-center justify-center w-9 h-9 rounded-full shadow-md bg-gradient-to-br from-orange-500 to-amber-500 text-sidebar-primary-foreground font-bold text-sm">
+              {settings?.organization_name?.split(' ').map((n: string) => n[0]).join('')}
             </div>
             {!collapsed && (
-              <span className="font-bold text-base text-sidebar-foreground tracking-tight">
+              <span className="font-bold font-sans text-base text-sidebar-foreground tracking-tight">
                 {settings?.organization_name}
               </span>
             )}
@@ -214,7 +214,10 @@ export default function AppSidebar({
             >
               <div className="w-9 h-9 rounded-xl bg-white/80 dark:bg-white text-sidebar-accent flex items-center justify-center text-sm font-extrabold shrink-0 shadow-sm">
                 {user?.avatar_url ? (
-                  <img src={user?.avatar_url} alt={user?.name} className="w-full h-full object-cover rounded-xl" />
+                  <img
+                    src={user?.avatar_url}
+                    alt={user?.name}
+                    className="w-full h-full object-cover rounded-xl" />
                 ) : (
                   user?.name?.split(' ').map(n => n[0]).join('')
                 )}

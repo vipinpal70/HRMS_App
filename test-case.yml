@@ -132,8 +132,8 @@ Settings (Admin Only):
 Bugs:
 fixed:
   - auth issue: when trying to login with geolocation and entering a ramdom mail, it is not checking if the mail is already exist or not and creating a new user from that mail and setting the name as mail. also explain how without password, new user acc is creating.
+  - task notification: do not send pending task notification to admin, it is only for employees
+  - Reports: remove leaves in chart and only keep absent
 
 not fixed:
   - clear notification issue: the notifications do not dismiss when clear button is clicked and also not showing any error message.
-  - task notification: do not send pending task notification to admin, it is only for employees
-  - Reports: remove leaves in chart and only keep absent

@@ -16,6 +16,7 @@ import { getTasks } from '../actions/tasks';
 import { getCompanySettings } from '../actions/settings';
 import { createNotification } from '../actions/notifications';
 import { useAuth } from '../context/AuthContext';
+import { createClient } from '@/lib/supabase/client';
 
 export default function TaskReminder() {
   const { user } = useAuth();
@@ -33,6 +34,10 @@ export default function TaskReminder() {
       if (localStorage.getItem(storageKey)) return;
 
       try {
+        const supabase = createClient();
+        const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
+        if (!profile || profile.role !== 'emp') return;
+
         const [tasks, settings] = await Promise.all([
           getTasks(),
           getCompanySettings()
