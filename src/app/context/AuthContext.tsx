@@ -1,9 +1,8 @@
 'use client'
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { User } from '@supabase/supabase-js'
 
 export type UserRole = 'emp' | 'admin' | 'hr'
 
@@ -165,6 +164,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(null)
         setLoading(false); // Ensure loading is cleared on sign-out
         sessionStorage.clear();
+        localStorage.clear();
         window.location.href = '/login';
       }
     })
@@ -180,6 +180,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     sessionStorage.clear();
+    localStorage.clear();
     await supabase.auth.signOut()
     setUser(null)
     window.location.href = '/login';

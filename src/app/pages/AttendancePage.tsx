@@ -7,7 +7,7 @@ import {
   TrendingUp, UserCheck, AlertCircle, Coffee, Search, X, ChevronDown
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { getMyAttendance, getEmployeesAttendance, getEmployeeListForFilter } from '../actions/attendance';
+import { apiGet } from '@/lib/apiClient';
 import { toast } from 'react-hot-toast';
 import Skeleton from 'react-loading-skeleton';
 import 'react-loading-skeleton/dist/skeleton.css';
@@ -384,27 +384,41 @@ function MyAttendanceView() {
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
+  const [viewAll, setViewAll] = useState(false);
 
   const { data: recordsData, isLoading: loading } = useQuery({
-    queryKey: ['myAttendance', month, year],
-    queryFn: () => getMyAttendance(month, year),
+    queryKey: ['myAttendance', month, year, viewAll],
+    queryFn: () => {
+      if (!viewAll) return apiGet('/api/attendance?type=my&limit=15');
+      return apiGet(`/api/attendance?type=my&month=${month}&year=${year}`);
+    },
+    staleTime: viewAll ? 60000 : 0, // Fresh data for recent, 1 min for month
   });
   
-  const records: AttendanceRecord[] = (recordsData as any[]) || [];
+  const records: AttendanceRecord[] = Array.isArray(recordsData) ? recordsData : [];
 
   return (
     <div className="space-y-5">
       {/* Header row */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-        <MonthPicker month={month} year={year} onChange={(m, y) => { setMonth(m); setYear(y); }} />
-        {records.length > 0 && (
-          <button
-            onClick={() => exportToCSV(records, `my-attendance-${MONTH_NAMES[month - 1]}-${year}`)}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/80 transition-colors text-sm font-medium"
-          >
-            <Download className="w-4 h-4" /> Export CSV
-          </button>
+        {viewAll ? (
+          <MonthPicker month={month} year={year} onChange={(m, y) => { setMonth(m); setYear(y); }} />
+        ) : (
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-secondary/60 text-sm font-medium">
+            <Clock className="w-4 h-4 text-primary" />
+            Recent 15 Records
+          </div>
         )}
+        <div className="flex gap-2">
+          {records.length > 0 && (
+            <button
+              onClick={() => exportToCSV(records, `my-attendance-${viewAll ? `${MONTH_NAMES[month - 1]}-${year}` : 'recent'}`)}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/80 transition-colors text-sm font-medium"
+            >
+              <Download className="w-4 h-4" /> Export CSV
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Stats */}
@@ -427,6 +441,18 @@ function MyAttendanceView() {
       {/* Table */}
       <div className="stat-card !p-0 overflow-hidden">
         <AttendanceTable records={records} showEmployee={false} loading={loading} />
+        
+        {!viewAll && !loading && records.length >= 15 && (
+          <div className="p-4 border-t border-border/40 bg-muted/20 flex justify-center">
+            <button
+              onClick={() => setViewAll(true)}
+              className="flex items-center gap-2 px-6 py-2 rounded-full bg-background border border-border hover:border-primary hover:text-primary transition-all text-sm font-medium shadow-sm"
+            >
+              See More (Full Month)
+              <ChevronDown className="w-4 h-4" />
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -443,15 +469,21 @@ function AllEmployeesView() {
 
   const { data: employeesData, isLoading: empLoading } = useQuery({
     queryKey: ['employeesFilterList'],
-    queryFn: () => getEmployeeListForFilter(),
+    queryFn: () => apiGet('/api/attendance?type=employee-list'),
   });
-  const employees: Employee[] = (employeesData as any[]) || [];
+  const employees: Employee[] = Array.isArray(employeesData) ? employeesData : [];
 
   const { data: recordsData, isLoading: loading } = useQuery({
     queryKey: ['allEmployeesAttendance', month, year, selectedEmployee],
-    queryFn: () => getEmployeesAttendance(month, year, selectedEmployee),
+    queryFn: () => {
+      if (selectedEmployee === 'all') {
+        return apiGet('/api/attendance?type=employees&todayOnly=true');
+      }
+      return apiGet(`/api/attendance?type=employees&month=${month}&year=${year}&employeeId=${selectedEmployee}`);
+    },
+    staleTime: selectedEmployee === 'all' ? 0 : 60000,
   });
-  const records: AttendanceRecord[] = (recordsData as any[]) || [];
+  const records: AttendanceRecord[] = Array.isArray(recordsData) ? recordsData : [];
 
   const selectedEmpName = employees.find(e => e.id === selectedEmployee)?.name;
   const exportFileName = selectedEmployee === 'all'
@@ -492,8 +524,17 @@ function AllEmployeesView() {
             <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
           </div>
 
-          {/* Month picker */}
-          <MonthPicker month={month} year={year} onChange={(m, y) => { setMonth(m); setYear(y); }} />
+          {/* Month picker - only show when specific employee is selected */}
+          {selectedEmployee !== 'all' && (
+            <MonthPicker month={month} year={year} onChange={(m, y) => { setMonth(m); setYear(y); }} />
+          )}
+          
+          {selectedEmployee === 'all' && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-secondary/60 text-sm font-medium">
+              <CalendarDays className="w-4 h-4 text-primary" />
+              Today's Overview
+            </div>
+          )}
         </div>
 
         {/* Export – exports only what's currently shown (filtered) */}

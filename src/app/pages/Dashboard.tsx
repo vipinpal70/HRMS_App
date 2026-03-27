@@ -19,11 +19,7 @@ import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Progress } from '../components/ui/progress';
 import { Calendar } from '../components/ui/calendar';
-import { getTodayStatus, checkIn, checkOut, getAttendanceHistory, getEffectiveWorkType } from '../actions/attendance';
-import { getYearHolidays } from '../actions/calendar';
-import { getTasks } from '../actions/tasks';
-import { getQuoteOfDay } from '../actions/quotes';
-import { getCompanySettings } from '../actions/settings';
+import { apiGet, apiPost } from '@/lib/apiClient';
 import { toast } from 'react-hot-toast';
 import Link from 'next/link';
 import Skeleton from 'react-loading-skeleton';
@@ -73,38 +69,38 @@ export default function Dashboard() {
 
   const { data: todayData, isLoading: loadingToday } = useQuery({
     queryKey: ['todayStatus'],
-    queryFn: () => getTodayStatus(),
-    staleTime: 0, // keep the live timer fresh
+    queryFn: () => apiGet('/api/attendance?type=today'),
+    staleTime: 0,
   });
 
   const { data: settingsData, isLoading: loadingSettings } = useQuery({
     queryKey: ['companySettings'],
-    queryFn: () => getCompanySettings(),
+    queryFn: () => apiGet('/api/settings'),
   });
 
   const { data: historyData, isLoading: loadingHistory } = useQuery({
     queryKey: ['attendanceHistory'],
-    queryFn: () => getAttendanceHistory(),
+    queryFn: () => apiGet('/api/attendance?type=history'),
   });
 
   const { data: tasksData, isLoading: loadingTasks } = useQuery({
     queryKey: ['dashboardTasks'],
-    queryFn: () => getTasks(),
+    queryFn: () => apiGet('/api/tasks'),
   });
 
   const { data: workTypeData, isLoading: loadingWorkType } = useQuery({
     queryKey: ['effectiveWorkType'],
-    queryFn: () => getEffectiveWorkType(),
+    queryFn: () => apiGet('/api/attendance?type=effective-work-type'),
   });
 
   const { data: quote, isLoading: loadingQuote } = useQuery({
     queryKey: ['quoteOfDay'],
-    queryFn: () => getQuoteOfDay(),
+    queryFn: () => apiGet('/api/quotes'),
   });
 
   const { data: yearData, isLoading: loadingYearData } = useQuery({
     queryKey: ['yearHolidays', currentYear],
-    queryFn: () => getYearHolidays(currentYear),
+    queryFn: () => apiGet(`/api/calendar?type=holidays&year=${currentYear}`),
   });
 
   const initialLoading = loadingToday || loadingSettings || loadingHistory || loadingTasks || loadingWorkType || loadingQuote || loadingYearData;
@@ -118,11 +114,11 @@ export default function Dashboard() {
   }, [settingsData]);
 
   const effectiveWorkType = (workTypeData as any) || 'office';
-  const records = (historyData as unknown as AttendanceRecord[]) || [];
-  const tasks: any[] = (tasksData as any[]) || [];
+  const records = Array.isArray(historyData) ? (historyData as unknown as AttendanceRecord[]) : [];
+  const tasks: any[] = Array.isArray(tasksData) ? (tasksData as any[]) : [];
   
   const holidays: { date: Date; label: string; type: 'holiday' | 'event' }[] = useMemo(() => {
-    if (!yearData) return [];
+    if (!Array.isArray(yearData)) return [];
     return (yearData as any[]).map((h: any) => ({
       date: new Date(h.date),
       label: h.description,
@@ -195,7 +191,7 @@ export default function Dashboard() {
         const { latitude, longitude } = position.coords;
 
         try {
-          const result = await checkIn(latitude, longitude);
+          const result = await apiPost('/api/attendance', { action: 'checkIn', latitude, longitude });
 
           if (result.error) {
             toast.error(result.error);
@@ -203,11 +199,9 @@ export default function Dashboard() {
             toast.success('Checked in successfully!');
             setCheckedIn(true);
             setCheckInTime(new Date());
-            // Refresh today's record to get updated work_type/session state
-            const refreshed = await getTodayStatus();
+            const refreshed = await apiGet('/api/attendance?type=today');
             if (refreshed) queryClient.setQueryData(['todayStatus'], refreshed);
-            // Also refresh effective work type in case a leave was just approved (less likely but good for consistency)
-            const workType = await getEffectiveWorkType();
+            const workType = await apiGet('/api/attendance?type=effective-work-type');
             if (workType) queryClient.setQueryData(['effectiveWorkType'], workType);
           }
         } catch (error) {
@@ -250,7 +244,7 @@ export default function Dashboard() {
   // Perform Check Out
   const performCheckOut = async (lat: number, lng: number) => {
     try {
-      const result = await checkOut(lat, lng);
+      const result = await apiPost('/api/attendance', { action: 'checkOut', latitude: lat, longitude: lng });
 
       if (result.error) {
         toast.error(result.error);
@@ -258,8 +252,7 @@ export default function Dashboard() {
         toast.success('Checked out successfully!');
         setCheckedIn(false);
         setCheckInTime(null);
-        // Refresh today's record so office-done state is detected immediately
-        const refreshed = await getTodayStatus();
+        const refreshed = await apiGet('/api/attendance?type=today');
         if (refreshed) queryClient.setQueryData(['todayStatus'], refreshed);
       }
     } catch (error) {

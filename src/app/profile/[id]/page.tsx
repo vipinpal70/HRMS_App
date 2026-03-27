@@ -3,7 +3,25 @@
 import { useState, useEffect, useTransition } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/app/context/AuthContext';
-import { getProfile, updateProfile, deleteProfile, Profile, uploadAvatar } from '@/app/actions/profile';
+import { apiGet, apiPatch, apiDelete, apiPostFormData } from '@/lib/apiClient';
+
+interface Profile {
+    id: string;
+    email: string;
+    name: string;
+    designation?: string;
+    phone?: string;
+    total_leaves?: number;
+    remaining_leaves?: number;
+    add_on_leaves?: number;
+    dob?: string;
+    avatar_url?: string;
+    role?: string;
+    emp_id?: string;
+    created_at?: string;
+    document_submit?: boolean;
+    document_received?: boolean;
+}
 import {
     User,
     Mail,
@@ -48,7 +66,7 @@ export default function ProfilePage() {
         async function loadProfile() {
             if (!id) return;
             setLoading(true);
-            const data = await getProfile(id);
+            const data = await apiGet(`/api/profile?id=${id}`);
             if (data) {
                 setProfile(data);
                 setFormData({
@@ -73,7 +91,7 @@ export default function ProfilePage() {
                 (submitData as any).dob = null;
             }
 
-            const result = await updateProfile(id, submitData);
+            const result = await apiPatch('/api/profile', { id, ...submitData });
             if (result.success) {
                 toast.success(result.message || 'Profile updated');
                 setIsEditing(false);
@@ -90,7 +108,7 @@ export default function ProfilePage() {
         }
 
         setIsDeleting(true);
-        const result = await deleteProfile(id);
+        const result = await apiDelete(`/api/profile?id=${id}`);
 
         if (result.success) {
             toast.success('Profile deleted successfully');
@@ -117,7 +135,7 @@ export default function ProfilePage() {
             const formData = new FormData();
             formData.append('file', file);
 
-            const result = await uploadAvatar(profile.id, formData);
+            const result = await apiPostFormData(`/api/profile/avatar?userId=${profile.id}`, formData);
 
             if (result.error) {
                 toast.error(result.error);

@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, ChevronRight, Palmtree, Plus, Loader2, Trash, Star } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { useAuth } from '../context/AuthContext';
-import { addHoliday, getCalendarEvents, ensureMonthWeekends, getYearHolidays, deleteHoliday } from '../actions/calendar';
+import { apiGet, apiPost, apiDelete } from '@/lib/apiClient';
 import { toast } from 'react-hot-toast';
 import Skeleton from 'react-loading-skeleton';
 import 'react-loading-skeleton/dist/skeleton.css';
@@ -37,19 +37,19 @@ export default function CalendarPage() {
 
   const { data: monthData, isLoading: loadingEvents } = useQuery({
     queryKey: ['calendarEvents', currentMonth + 1, currentYear],
-    queryFn: () => getCalendarEvents(currentMonth + 1, currentYear),
+    queryFn: () => apiGet(`/api/calendar?type=events&month=${currentMonth + 1}&year=${currentYear}`),
     enabled: !!user,
   });
 
   const { data: yearDataRaw, isLoading: loadingHolidays } = useQuery({
     queryKey: ['yearHolidays', currentYear],
-    queryFn: () => getYearHolidays(currentYear),
+    queryFn: () => apiGet(`/api/calendar?type=holidays&year=${currentYear}`),
     enabled: !!user,
   });
 
-  const events: CalendarEvent[] = (monthData as any[]) || [];
+  const events: CalendarEvent[] = Array.isArray(monthData) ? monthData : [];
   const yearHolidays: CalendarEvent[] = useMemo(() => {
-    if (!yearDataRaw) return [];
+    if (!Array.isArray(yearDataRaw)) return [];
     const todayStr = new Date().toISOString().split('T')[0];
     return (yearDataRaw as any[])
       .filter(h => new Date(h.date).toISOString().split('T')[0] >= todayStr)
@@ -57,7 +57,7 @@ export default function CalendarPage() {
   }, [yearDataRaw]);
 
   useEffect(() => {
-    if (user) ensureMonthWeekends(currentMonth + 1, currentYear).catch(() => {});
+    if (user) apiPost('/api/calendar', { action: 'ensureWeekends', month: currentMonth + 1, year: currentYear }).catch(() => {});
   }, [currentMonth, currentYear, user]);
 
   if (authLoading || (loadingEvents && events.length === 0)) {
@@ -113,7 +113,7 @@ export default function CalendarPage() {
     if (!holidayName || !holidayDate) return;
 
     setIsSubmitting(true);
-    const res = await addHoliday(holidayDate, holidayName);
+    const res = await apiPost('/api/calendar', { action: 'addHoliday', date: holidayDate, description: holidayName });
     setIsSubmitting(false);
 
     if (res.success) {
@@ -154,7 +154,7 @@ export default function CalendarPage() {
 
   const handleDeleteHoliday = async (id: any) => {
     setIsSubmitting(true);
-    const res = await deleteHoliday(id);
+    const res = await apiDelete(`/api/calendar?id=${id}`);
     setIsSubmitting(false);
 
     if (res.success) {

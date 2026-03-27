@@ -7,7 +7,7 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Textarea } from '../components/ui/textarea';
 import { Calendar, Send, CheckCircle2, XCircle, Clock, Search, User, AlertTriangle, Trash, Loader2 } from 'lucide-react';
-import { getLeaveRequests, createLeaveRequest, updateLeaveStatus, deleteLeaveRequest, retractLeaveRequest } from '../actions/leave';
+import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/apiClient';
 import { toast } from 'react-hot-toast';
 import Skeleton from 'react-loading-skeleton';
 import 'react-loading-skeleton/dist/skeleton.css';
@@ -26,6 +26,8 @@ interface LeaveRequest {
   created_at?: string;
   user_name?: string;
   user_email?: string;
+  remaining_leaves?: number | null;
+  total_leaves?: number | null;
 }
 
 const statusIcons = {
@@ -80,7 +82,9 @@ export default function LeavePage() {
 
   const getMonthDates = () => {
     const now = new Date();
-    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+    // First day of previous month
+    const firstDay = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    // Last day of current month
     const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
     return {
       start: firstDay.toISOString().split('T')[0],
@@ -93,11 +97,17 @@ export default function LeavePage() {
 
   const { data: requestsData, isLoading: loading } = useQuery({
     queryKey: ['leaveRequests', isAdmin ? 'all' : undefined, dateRange.start, dateRange.end],
-    queryFn: () => getLeaveRequests(isAdmin ? 'all' : undefined, dateRange.start, dateRange.end),
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (isAdmin) params.set('userId', 'all');
+      if (dateRange.start) params.set('startDate', dateRange.start);
+      if (dateRange.end) params.set('endDate', dateRange.end);
+      return apiGet(`/api/leave?${params.toString()}`);
+    },
   });
 
   const requests: LeaveRequest[] = useMemo(() => {
-    if (!requestsData) return [];
+    if (!Array.isArray(requestsData)) return [];
     const sortedData = [...(requestsData as any[])].sort((a, b) => {
       const order: Record<string, number> = {
         'retraction_pending': 0,
@@ -130,7 +140,7 @@ export default function LeavePage() {
 
   // Delete Leave Request
   const handleDelete = async (id: string) => {
-    const result = await deleteLeaveRequest(id);
+    const result = await apiDelete(`/api/leave?id=${id}`);
     if (result.success) {
       toast.success(result.message);
       queryClient.invalidateQueries({ queryKey: ['leaveRequests'] });
@@ -142,13 +152,12 @@ export default function LeavePage() {
   const handleSubmit = async () => {
     if (!form.startDate || !form.reason) return;
 
-    const formData = new FormData();
-    formData.append('type', form.type);
-    formData.append('start_date', form.startDate);
-    formData.append('end_date', form.endDate || form.startDate);
-    formData.append('reason', form.reason);
-
-    const result = await createLeaveRequest(formData);
+    const result = await apiPost('/api/leave', {
+      type: form.type,
+      start_date: form.startDate,
+      end_date: form.endDate || form.startDate,
+      reason: form.reason,
+    });
 
     if (result.success) {
       toast.success(result.message);
@@ -161,7 +170,7 @@ export default function LeavePage() {
   };
 
   const handleRetract = async (id: string) => {
-    const result = await retractLeaveRequest(id);
+    const result = await apiPatch('/api/leave', { action: 'retract', id });
     if (result.success) {
       toast.success(result.message);
       queryClient.invalidateQueries({ queryKey: ['leaveRequests'] });
@@ -172,7 +181,7 @@ export default function LeavePage() {
 
   const handleApproval = async (id: string, status: 'approved' | 'rejected' | 'cancelled') => {
     // Only allow 'approved', 'rejected' or 'cancelled'
-    const result = await updateLeaveStatus(id, status);
+    const result = await apiPatch('/api/leave', { action: 'updateStatus', id, status });
     if (result.success) {
       toast.success(result.message);
       queryClient.invalidateQueries({ queryKey: ['leaveRequests'] });
@@ -253,7 +262,7 @@ export default function LeavePage() {
               className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${timeFilter === 'month' ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
                 }`}
             >
-              Month
+              Recent
             </button>
           </div>
 
@@ -379,6 +388,17 @@ export default function LeavePage() {
                             {isAdmin && overlappingKeys.has(`${req.start_date}__${req.end_date || req.start_date}`) && (
                               <span className="flex items-center gap-1 text-xs font-medium text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded">
                                 <AlertTriangle className="w-3 h-3" /> Overlapping
+                              </span>
+                            )}
+                            {req.remaining_leaves != null && (
+                              <span className={`text-xs font-medium px-2 py-0.5 rounded ${
+                                req.remaining_leaves <= 0 
+                                  ? 'bg-destructive/10 text-destructive' 
+                                  : req.remaining_leaves <= 3 
+                                    ? 'bg-warning/10 text-warning' 
+                                    : 'bg-primary/10 text-primary'
+                              }`}>
+                                {req.remaining_leaves}/{req.total_leaves ?? '?'} leaves left
                               </span>
                             )}
                           </div>

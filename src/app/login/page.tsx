@@ -1,14 +1,14 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { login, signup } from './actions'
-import { loginWithIp, loginWithGps } from '@/app/actions/auth-advanced'
+import { apiPost } from '@/lib/apiClient'
 import { Button } from '@/app/components/ui/button'
 import { Input } from '@/app/components/ui/input'
 import { Label } from '@/app/components/ui/label'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/app/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs'
-import { Wifi, MapPin, Mail, Loader2, Eye, EyeOff } from 'lucide-react'
+import { MapPin, Mail, Loader2, Eye, EyeOff } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 
 export default function LoginPage() {
@@ -16,10 +16,22 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [email, setEmail] = useState('')
   const [viewPassword, setViewPassword] = useState(false)
+  const [countdown, setCountdown] = useState(0)
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout
+    if (countdown > 0) {
+      timer = setInterval(() => {
+        setCountdown((prev) => prev - 1)
+      }, 1000)
+    }
+    return () => clearInterval(timer)
+  }, [countdown])
 
   async function handleLogin(formData: FormData) {
     setLoading(true)
     setError(null)
+    setCountdown(10)
     const result = await login(formData)
     if (result?.error) {
       setError(result.error)
@@ -30,6 +42,7 @@ export default function LoginPage() {
   async function handleSignup(formData: FormData) {
     setLoading(true)
     setError(null)
+    setCountdown(10)
     const result = await signup(formData)
     if (result?.error) {
       setError(result.error)
@@ -44,8 +57,9 @@ export default function LoginPage() {
     }
     setLoading(true)
     setError(null)
+    setCountdown(10)
 
-    const result = await loginWithIp(email)
+    const result = await apiPost('/api/auth-advanced', { action: 'loginWithIp', email })
 
     if (result.error) {
       setError(result.error)
@@ -63,6 +77,7 @@ export default function LoginPage() {
     }
     setLoading(true)
     setError(null)
+    setCountdown(10)
 
     if (!navigator.geolocation) {
       setError('Geolocation is not supported by your browser.')
@@ -73,7 +88,7 @@ export default function LoginPage() {
     navigator.geolocation.getCurrentPosition(
       async (position) => {
         const { latitude, longitude } = position.coords
-        const result = await loginWithGps(email, latitude, longitude)
+        const result = await apiPost('/api/auth-advanced', { action: 'loginWithGps', email, latitude, longitude })
         console.log("result: ", result)
 
         if (result.error) {
@@ -139,8 +154,8 @@ export default function LoginPage() {
                       </div>
                     </div>
                     {error && <p className="text-sm text-red-500">{error}</p>}
-                    <Button type="submit" className="w-full" disabled={loading}>
-                      {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Login'}
+                    <Button type="submit" className="w-full" disabled={loading || countdown > 0}>
+                      {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : countdown > 0 ? `Retry in ${countdown}s` : 'Login'}
                     </Button>
                   </form>
                 </TabsContent>
@@ -161,8 +176,8 @@ export default function LoginPage() {
                       />
                     </div>
                     {error && <p className="text-sm text-red-500">{error}</p>}
-                    <Button onClick={handleIpLogin} className="w-full bg-blue-600 hover:bg-blue-700" disabled={loading}>
-                      {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Login with IP'}
+                    <Button onClick={handleIpLogin} className="w-full bg-blue-600 hover:bg-blue-700" disabled={loading || countdown > 0}>
+                      {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : countdown > 0 ? `Retry in ${countdown}s` : 'Login with IP'}
                     </Button>
                   </div>
                 </TabsContent> */}
@@ -183,8 +198,8 @@ export default function LoginPage() {
                       />
                     </div>
                     {error && <p className="text-sm text-red-500">{error}</p>}
-                    <Button onClick={handleGpsLogin} className="w-full bg-green-600 hover:bg-green-700" disabled={loading}>
-                      {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Login with GPS'}
+                    <Button onClick={handleGpsLogin} className="w-full bg-green-600 hover:bg-green-700" disabled={loading || countdown > 0}>
+                      {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : countdown > 0 ? `Retry in ${countdown}s` : 'Login with GPS'}
                     </Button>
                   </div>
                 </TabsContent>
@@ -229,8 +244,8 @@ export default function LoginPage() {
                 {error && <p className="text-sm text-red-500">{error}</p>}
               </CardContent>
               <CardFooter>
-                <Button type="submit" className="w-full" disabled={loading}>
-                  {loading ? 'Signing up...' : 'Sign Up'}
+                <Button type="submit" className="w-full" disabled={loading || countdown > 0}>
+                  {loading ? 'Signing up...' : countdown > 0 ? `Retry in ${countdown}s` : 'Sign Up'}
                 </Button>
               </CardFooter>
             </form>

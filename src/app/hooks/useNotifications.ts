@@ -3,13 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '../context/AuthContext';
-import {
-    getNotifications,
-    getUnreadCount,
-    markAsRead as markAsReadAction,
-    markAllAsRead as markAllAsReadAction,
-    clearAllNotifications as clearAllNotificationsAction,
-} from '../actions/notifications';
+import { apiGet, apiPatch, apiDelete } from '@/lib/apiClient';
 import toast from 'react-hot-toast';
 
 export interface Notification {
@@ -77,12 +71,21 @@ export function useNotifications() {
         if (!user) return;
         setIsLoading(true);
         try {
-            const [data, count] = await Promise.all([
-                getNotifications(20, 0),
-                getUnreadCount(),
-            ]);
-            setNotifications(data as Notification[]);
-            setUnreadCount(count);
+            const res1 = await apiGet('/api/notifications?type=list&limit=20&offset=0');
+            const res2 = await apiGet('/api/notifications?type=unread-count');
+
+            if (Array.isArray(res1)) {
+                setNotifications(res1);
+            } else if (res1 && res1.error) {
+                console.error('Notifications fetch error:', res1.error);
+                setNotifications([]);
+            }
+
+            if (typeof res2 === 'number') {
+                setUnreadCount(res2);
+            } else if (res2 && res2.error) {
+                console.error('Unread count fetch error:', res2.error);
+            }
         } catch (err) {
             console.error('Failed to fetch notifications:', err);
         } finally {
@@ -169,7 +172,7 @@ export function useNotifications() {
             );
             setUnreadCount((prev) => Math.max(0, prev - 1));
 
-            const result = await markAsReadAction(id);
+            const result = await apiPatch('/api/notifications', { action: 'markRead', id });
             if (result.error) {
                 // Revert on failure
                 setNotifications((prev) =>
@@ -189,7 +192,7 @@ export function useNotifications() {
         setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
         setUnreadCount(0);
 
-        const result = await markAllAsReadAction();
+        const result = await apiPatch('/api/notifications', { action: 'markAllRead' });
         if (result.error) {
             // Revert
             setNotifications(previousNotifs);
@@ -204,7 +207,7 @@ export function useNotifications() {
         setNotifications([]);
         setUnreadCount(0);
 
-        const result = await clearAllNotificationsAction();
+        const result = await apiDelete('/api/notifications?type=all');
 
         if (result.error) {
             // Revert on failure

@@ -12,9 +12,7 @@ import {
 } from './ui/dialog';
 import { TriangleAlert } from 'lucide-react';
 import { Button } from './ui/button';
-import { getTasks } from '../actions/tasks';
-import { getCompanySettings } from '../actions/settings';
-import { createNotification } from '../actions/notifications';
+import { apiGet, apiPost } from '@/lib/apiClient';
 import { useAuth } from '../context/AuthContext';
 import { createClient } from '@/lib/supabase/client';
 
@@ -39,8 +37,8 @@ export default function TaskReminder() {
         if (!profile || profile.role !== 'emp') return;
 
         const [tasks, settings] = await Promise.all([
-          getTasks(),
-          getCompanySettings()
+          apiGet('/api/tasks'),
+          apiGet('/api/settings')
         ]);
 
         const todayTasks = tasks.filter((t: any) => t.start_day === todayStr);
@@ -64,12 +62,12 @@ export default function TaskReminder() {
             setShowPopUp(true);
 
             // Trigger Supabase In-app notification
-            await createNotification(
-              "Task Reminder",
-              "Oops! It seems you haven't added your task for today, please add your task",
-              "warning",
-              "system"
-            );
+            await apiPost('/api/notifications', {
+              title: "Task Reminder",
+              message: "Oops! It seems you haven't added your task for today, please add your task",
+              type: "warning",
+              category: "system"
+            });
 
             // Mark as notified for today
             localStorage.setItem(storageKey, 'true');

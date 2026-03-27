@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { getCompanySettings, updateCompanySettings, updateTotalLeaves, getCurrentTotalLeaves } from '../actions/settings';
+import { apiGet, apiPut, apiPatch } from '@/lib/apiClient';
 import { toast } from 'react-hot-toast';
 import { Loader2, Shield, MapPin, Wifi, Building2, Clock, CalendarDays } from 'lucide-react';
 import Skeleton from 'react-loading-skeleton';
@@ -20,8 +20,8 @@ export default function SettingsPage() {
     async function fetchSettings() {
       try {
         const [data, currentLeaves] = await Promise.all([
-          getCompanySettings(),
-          getCurrentTotalLeaves(),
+          apiGet('/api/settings'),
+          apiGet('/api/settings?type=total-leaves'),
         ]);
         setSettings(data);
         setTotalLeaves(currentLeaves);
@@ -43,8 +43,15 @@ export default function SettingsPage() {
 
     setSaving(true);
     const formData = new FormData(e.currentTarget);
-
-    const result = await updateCompanySettings(formData);
+    const result = await apiPut('/api/settings', {
+      organization_name: formData.get('organization_name'),
+      allowed_ip_range: formData.get('allowed_ip_range'),
+      office_lat: formData.get('office_lat'),
+      office_lng: formData.get('office_lng'),
+      allowed_radius_meters: formData.get('allowed_radius_meters'),
+      office_start_time: formData.get('office_start_time'),
+      office_end_time: formData.get('office_end_time'),
+    });
 
     if (result.success) {
       const updated = Object.fromEntries(formData.entries());
@@ -284,7 +291,7 @@ export default function SettingsPage() {
                     return;
                   }
                   setSavingLeaves(true);
-                  const result = await updateTotalLeaves(totalLeaves);
+                  const result = await apiPatch('/api/settings', { action: 'updateTotalLeaves', newTotal: totalLeaves });
                   if (result.success) {
                     toast.success(result.message ?? 'Leave quota updated.');
                   } else {

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import Highcharts from "highcharts";
 import HighchartsReact from "highcharts-react-official";
 import { usePDF } from 'react-to-pdf';
@@ -8,17 +9,7 @@ import Skeleton from 'react-loading-skeleton';
 import 'react-loading-skeleton/dist/skeleton.css';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 
-import {
-  getReportData,
-  getMonthlyAggregateData,
-  getEmployeesBySearch,
-  getEmployeeReport,
-  getMonthlyTasksData,
-  getQuarterlyTasksData
-} from "../actions/report";
-import { getEmployees } from "../actions/profile";
-
-import { getEmployeesAttendance } from "../actions/attendance";
+import { apiGet } from '@/lib/apiClient';
 import { Search, Download } from "lucide-react";
 import { Mosaic } from "react-loading-indicators";
 
@@ -43,60 +34,94 @@ export default function ReportsPage() {
   const [employees, setEmployees] = useState<any[]>([]);
   const [selectedEmployee, setSelectedEmployee] = useState<any>(null);
   const [searchLoading, setSearchLoading] = useState(false);
-  const [employeeReport, setEmployeeReport] = useState<any[]>([]);
-  const [monthlyData, setMonthlyData] = useState<any[]>([]);
-  const [monthlyTasksData, setMonthlyTasksData] = useState<any[]>([]);
-  const [QuarterlyTasksData, setQuarterlyTasksData] = useState<any[]>([]);
-  const [attendanceData, setAttendanceData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [initialLoading, setInitialLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [dataLoading, setDataLoading] = useState(false);
   const [employeeFilter, setEmployeeFilter] = useState<string>('all');
-  const [allEmployees, setAllEmployees] = useState<any[]>([]);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setInitialLoading(true);
-        const now = new Date();
-        const currentMonth = now.getMonth() + 1;
-        const currentYear = now.getFullYear();
+  const now = useMemo(() => new Date(), []);
+  const currentMonth = now.getMonth() + 1;
+  const currentYear = now.getFullYear();
 
-        console.log('Fetching data for month:', currentMonth, 'year:', currentYear);
+  // Queries for "All Employees" data
+  const { data: reportData, isLoading: reportLoading } = useQuery({
+    queryKey: ['report-data'],
+    queryFn: () => apiGet('/api/report?type=report-data'),
+  });
 
-        const [reportResult, monthlyResult, monthlyTasksResult, weeklyTasksResult, attendanceResult] = await Promise.all([
-          getReportData(),
-          getMonthlyAggregateData(),
-          getMonthlyTasksData(),
-          getQuarterlyTasksData(),
-          getEmployeesAttendance(currentMonth, currentYear)
-        ]);
+  const { data: monthlyResult, isLoading: monthlyLoading } = useQuery({
+    queryKey: ['monthly-aggregate'],
+    queryFn: () => apiGet('/api/report?type=monthly-aggregate'),
+  });
 
-        console.log('Attendance result from getEmployeesAttendance:', attendanceResult);
-        console.log('Attendance result length:', attendanceResult?.length);
+  const { data: monthlyTasksResult, isLoading: monthlyTasksLoading } = useQuery({
+    queryKey: ['monthly-tasks', 'all'],
+    queryFn: () => apiGet('/api/report?type=monthly-tasks'),
+  });
 
-        if (reportResult?.error || monthlyResult?.error || monthlyTasksResult?.error || weeklyTasksResult?.error) {
-          setError(reportResult?.error || monthlyResult?.error || monthlyTasksResult?.error || weeklyTasksResult?.error);
-          return;
-        }
-        const employeesResult = await getEmployees();
-        setAllEmployees(employeesResult || []);
-        setMonthlyData(monthlyResult?.data || []);
-        setMonthlyTasksData(monthlyTasksResult?.data || []);
-        console.log('Weekly tasks data for all employees:', weeklyTasksResult?.data);
-        setQuarterlyTasksData(weeklyTasksResult?.data || []);
-        setAttendanceData(attendanceResult || []);
-      } catch (err) {
-        console.error(err);
-        setError("Failed to fetch report data");
-      } finally {
-        setInitialLoading(false);
-        setLoading(false);
-      }
-    };
-    fetchData();
-  }, []);
+  const { data: quarterlyTasksResult, isLoading: quarterlyTasksLoading } = useQuery({
+    queryKey: ['quarterly-tasks', 'all'],
+    queryFn: () => apiGet('/api/report?type=quarterly-tasks'),
+  });
+
+  const { data: attendanceResult, isLoading: attendanceLoading } = useQuery({
+    queryKey: ['attendance-aggregate', currentMonth, currentYear, 'all'],
+    queryFn: () => apiGet(`/api/report?type=attendance-aggregate&month=${currentMonth}&year=${currentYear}`),
+  });
+
+  const { data: employeesResult, isLoading: employeesLoading } = useQuery({
+    queryKey: ['employees'],
+    queryFn: () => apiGet('/api/profile?type=employees'),
+  });
+
+  // Queries for specific employee data
+  const { data: empAttendance, isLoading: empAttendanceLoading } = useQuery({
+    queryKey: ['employee-report', employeeFilter],
+    queryFn: () => apiGet(`/api/report?type=employee-report&userId=${employeeFilter}`),
+    enabled: !!employeeFilter && employeeFilter !== 'all',
+  });
+
+  const { data: empMonthlyTasks, isLoading: empMonthlyTasksLoading } = useQuery({
+    queryKey: ['monthly-tasks', employeeFilter],
+    queryFn: () => apiGet(`/api/report?type=monthly-tasks&userId=${employeeFilter}`),
+    enabled: !!employeeFilter && employeeFilter !== 'all',
+  });
+
+  const { data: empQuarterlyTasks, isLoading: empQuarterlyTasksLoading } = useQuery({
+    queryKey: ['quarterly-tasks', employeeFilter],
+    queryFn: () => apiGet(`/api/report?type=quarterly-tasks&userId=${employeeFilter}`),
+    enabled: !!employeeFilter && employeeFilter !== 'all',
+  });
+
+  const { data: empAttendanceRecords, isLoading: empAttendanceRecordsLoading } = useQuery({
+    queryKey: ['attendance-aggregate', currentMonth, currentYear, employeeFilter],
+    queryFn: () => apiGet(`/api/report?type=attendance-aggregate&month=${currentMonth}&year=${currentYear}&userId=${employeeFilter}`),
+    enabled: !!employeeFilter && employeeFilter !== 'all',
+  });
+
+  const allEmployees = employeesResult || [];
+  const monthlyData = monthlyResult?.data || [];
+
+  const monthlyTasksData = employeeFilter !== 'all'
+    ? (empMonthlyTasks?.data || [])
+    : (monthlyTasksResult?.data || []);
+
+  const QuarterlyTasksData = employeeFilter !== 'all'
+    ? (empQuarterlyTasks?.data || [])
+    : (quarterlyTasksResult?.data || []);
+
+  const attendanceData = employeeFilter !== 'all'
+    ? (empAttendanceRecords?.data || [])
+    : (attendanceResult?.data || []);
+
+  const employeeReport = useMemo(() => {
+    if (employeeFilter !== 'all' && empAttendance?.data) {
+      return [...empAttendance.data].reverse();
+    }
+    return [];
+  }, [employeeFilter, empAttendance]);
+
+  const initialLoading = reportLoading || monthlyLoading || employeesLoading || (employeeFilter === 'all' && (monthlyTasksLoading || quarterlyTasksLoading || attendanceLoading));
+  const isDataLoading = empAttendanceLoading || empMonthlyTasksLoading || empQuarterlyTasksLoading || empAttendanceRecordsLoading;
+  const error = reportData?.error || monthlyResult?.error || (employeeFilter !== 'all' && empAttendance?.error);
+
 
   useEffect(() => {
     const fetchEmployees = async () => {
@@ -107,7 +132,7 @@ export default function ReportsPage() {
       try {
         setSearchLoading(true);
         console.log('Frontend: Searching for employees with query:', search);
-        const result = await getEmployeesBySearch(search);
+        const result = await apiGet(`/api/report?type=employee-search&query=${search}`);
         console.log('Frontend: Search result:', result);
         if (result?.success) {
           setEmployees(result.data || []);
@@ -132,85 +157,12 @@ export default function ReportsPage() {
     setEmployeeFilter(emp.id);
     setSearch(""); // Clear search to hide the dropdown
     setEmployees([]);
-    setDataLoading(true);
-
-    try {
-      const now = new Date();
-      const currentMonth = now.getMonth() + 1;
-      const currentYear = now.getFullYear();
-
-      console.log('Fetching data for employee:', emp.name, 'ID:', emp.id);
-      console.log('Month:', currentMonth, 'Year:', currentYear);
-
-      const [
-        employeeAttendance,
-        monthlyTasks,
-        weeklyTasks,
-        employeeAttendanceRecords
-      ] = await Promise.all([
-        getEmployeeReport(emp.id),
-        getMonthlyTasksData(emp.id),
-        getQuarterlyTasksData(emp.id),
-        getEmployeesAttendance(currentMonth, currentYear, emp.id)
-      ]);
-
-      console.log('Employee attendance records:', employeeAttendanceRecords);
-      console.log('Employee attendance records length:', employeeAttendanceRecords?.length);
-
-      if (employeeAttendance?.data) {
-        setEmployeeReport([...employeeAttendance.data].reverse());
-      }
-
-      if (monthlyTasks?.data) {
-        setMonthlyTasksData(monthlyTasks.data);
-      }
-
-      if (weeklyTasks?.data) {
-        console.log('Weekly tasks data for employee:', weeklyTasks.data);
-        setQuarterlyTasksData(weeklyTasks.data);
-      } else {
-        console.log('No weekly tasks data received:', weeklyTasks);
-        setQuarterlyTasksData([]); // Clear data when no data available
-      }
-
-      setAttendanceData(employeeAttendanceRecords || []);
-
-    } catch (err) {
-      console.error("Employee analytics fetch failed:", err);
-    } finally {
-      setDataLoading(false);
-    }
   };
 
   const handleClearSelection = async () => {
     setSelectedEmployee(null);
     setEmployeeFilter('all');
-    setEmployeeReport([]);
     setSearch("");
-    setDataLoading(true);
-
-    try {
-      // Refetch data for all employees
-      const now = new Date();
-      const currentMonth = now.getMonth() + 1;
-      const currentYear = now.getFullYear();
-
-      const [monthlyResult, monthlyTasksResult, weeklyTasksResult, attendanceResult] = await Promise.all([
-        getMonthlyAggregateData(),
-        getMonthlyTasksData(),
-        getQuarterlyTasksData(),
-        getEmployeesAttendance(currentMonth, currentYear)
-      ]);
-
-      setMonthlyData(monthlyResult?.data || []);
-      setMonthlyTasksData(monthlyTasksResult?.data || []);
-      setQuarterlyTasksData(weeklyTasksResult?.data || []);
-      setAttendanceData(attendanceResult || []);
-    } catch (err) {
-      console.error("Failed to refresh all employee data:", err);
-    } finally {
-      setDataLoading(false);
-    }
   };
 
   const chartData = selectedEmployee
@@ -272,16 +224,10 @@ export default function ReportsPage() {
 
     // Calculate attendance statistics from attendanceData
     const calculateAttendanceStats = () => {
-      if (!attendanceData || attendanceData.length === 0) {
-        console.log('No attendance data available for calculation');
-
-        // For testing purposes, return sample data if no real data
-        console.log('Using sample data for testing');
-        return { present: 15, absent: 3, late: 2, wfh: 5, leave: 1 };
+      if (!Array.isArray(attendanceData)) {
+        console.log('attendanceData is not an array:', attendanceData);
+        return { present: 0, absent: 0, late: 0, wfh: 0, leave: 0 };
       }
-
-      console.log('Processing attendance data:', attendanceData);
-      console.log('First record structure:', attendanceData[0]);
 
       const stats = attendanceData.reduce((acc, record) => {
         console.log('Processing record:', record);
@@ -473,7 +419,7 @@ export default function ReportsPage() {
                   if (val === 'all') {
                     handleClearSelection();
                   } else {
-                    const emp = allEmployees.find(e => e.id === val);
+                    const emp = allEmployees.find((e: any) => e.id === val);
                     if (emp) handleEmployeeSelect(emp);
                   }
                 }}>
@@ -482,7 +428,7 @@ export default function ReportsPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Employees</SelectItem>
-                    {allEmployees.map(emp => (
+                    {allEmployees.map((emp: any) => (
                       <SelectItem key={emp.id} value={emp.id}>
                         {emp.name || emp.email}
                       </SelectItem>
@@ -515,7 +461,7 @@ export default function ReportsPage() {
                   No employees found matching "{search}"
                 </div>
               )} */}
-              {employees.map((emp) => (
+              {employees.map((emp: any) => (
                 <div
                   key={emp.id}
                   onClick={() => handleEmployeeSelect(emp)}
@@ -536,10 +482,10 @@ export default function ReportsPage() {
               <div className="mt-4 flex justify-end">
                 <button
                   onClick={handleClearSelection}
-                  disabled={dataLoading}
+                  disabled={isDataLoading}
                   className="text-xs text-red-600 hover:text-red-800 font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
-                  {dataLoading && (
+                  {isDataLoading && (
                     <Skeleton width={16} height={16} circle baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
                   )}
                   Clear
@@ -563,14 +509,14 @@ export default function ReportsPage() {
             )}
             {/* Charts Container */}
             <div className="relative">
-              {dataLoading && (
+              {isDataLoading && (
                 <div className="absolute inset-0 bg-background/90 backdrop-blur-sm flex flex-col items-center justify-center z-50 rounded-lg" style={{ minHeight: '400px' }}>
                   <Mosaic color="#f88a10" size="small" />
                   <p className="text-sm text-muted-foreground mt-4">Loading data...</p>
                 </div>
               )}
 
-              <div className={`grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8 ${dataLoading ? 'opacity-30' : ''}`}>
+              <div className={`grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8 ${isDataLoading ? 'opacity-30' : ''}`}>
                 {/* Monthly Tasks Chart */}
                 <div className="stat-card">
                   <h3 className="font-semibold font-roboto mb-4">
@@ -593,7 +539,7 @@ export default function ReportsPage() {
                           }
                         },
                         xAxis: {
-                          categories: monthlyTasksData?.map(item => item.month) || [],
+                          categories: monthlyTasksData?.map((item: any) => item.month) || [],
                           labels: {
                             style: {
                               color: "hsl(var(--foreground))"
@@ -649,13 +595,13 @@ export default function ReportsPage() {
                           {
                             type: "column",
                             name: "Task Done",
-                            data: monthlyTasksData?.map(item => item.done) || [],
+                            data: monthlyTasksData?.map((item: any) => item.done) || [],
                             stack: "Tasks"
                           },
                           {
                             type: "column",
                             name: "Task Pending",
-                            data: monthlyTasksData?.map(item => item.pending) || [],
+                            data: monthlyTasksData?.map((item: any) => item.pending) || [],
                             stack: "Tasks"
                           }
                         ]
@@ -699,7 +645,7 @@ export default function ReportsPage() {
                         }
                       },
                       xAxis: {
-                        categories: QuarterlyTasksData?.map(item => item.quarter) || [],
+                        categories: QuarterlyTasksData?.map((item: any) => item.quarter) || [],
                         labels: {
                           style: {
                             color: "hsl(var(--foreground))"
@@ -755,13 +701,13 @@ export default function ReportsPage() {
                         {
                           type: "column",
                           name: "Task Done",
-                          data: QuarterlyTasksData?.map(item => item.done) || [],
+                          data: QuarterlyTasksData?.map((item: any) => item.done) || [],
                           stack: "Tasks"
                         },
                         {
                           type: "column",
                           name: "Task Pending",
-                          data: QuarterlyTasksData?.map(item => item.pending) || [],
+                          data: QuarterlyTasksData?.map((item: any) => item.pending) || [],
                           stack: "Tasks"
                         }
                       ]
@@ -811,7 +757,7 @@ export default function ReportsPage() {
                         }
                       },
                       xAxis: {
-                        categories: monthlyTasksData?.map(item => item.month) || [],
+                        categories: monthlyTasksData?.map((item: any) => item.month) || [],
                         labels: {
                           style: {
                             color: 'white'
@@ -867,13 +813,13 @@ export default function ReportsPage() {
                         {
                           type: "column",
                           name: "Task Done",
-                          data: monthlyTasksData?.map(item => item.done) || [],
+                          data: monthlyTasksData?.map((item: any) => item.done) || [],
                           stack: "Tasks"
                         },
                         {
                           type: "column",
                           name: "Task Pending",
-                          data: monthlyTasksData?.map(item => item.pending) || [],
+                          data: monthlyTasksData?.map((item: any) => item.pending) || [],
                           stack: "Tasks"
                         }
                       ]
@@ -907,7 +853,7 @@ export default function ReportsPage() {
                         }
                       },
                       xAxis: {
-                        categories: QuarterlyTasksData?.map(item => item.quarter) || [],
+                        categories: QuarterlyTasksData?.map((item: any) => item.quarter) || [],
                         labels: {
                           style: {
                             color: 'white'
@@ -963,13 +909,13 @@ export default function ReportsPage() {
                         {
                           type: "column",
                           name: "Task Done",
-                          data: QuarterlyTasksData?.map(item => item.done) || [],
+                          data: QuarterlyTasksData?.map((item: any) => item.done) || [],
                           stack: "Tasks"
                         },
                         {
                           type: "column",
                           name: "Task Pending",
-                          data: QuarterlyTasksData?.map(item => item.pending) || [],
+                          data: QuarterlyTasksData?.map((item: any) => item.pending) || [],
                           stack: "Tasks"
                         }
                       ]
@@ -1006,7 +952,7 @@ export default function ReportsPage() {
                 </thead>
 
                 <tbody>
-                  {monthlyTasksData.map((item, index) => (
+                  {monthlyTasksData.map((item: any, index: number) => (
                     <tr key={index}>
                       <td className="border px-3 py-2" style={{ color: 'black' }}>{item.month}</td>
                       <td className="border px-3 py-2">{item.done}</td>
@@ -1035,14 +981,14 @@ export default function ReportsPage() {
 
                 <tbody>
                   {(() => {
-                    const stats = attendanceData?.reduce((acc, record) => {
+                    const stats = Array.isArray(attendanceData) ? attendanceData.reduce((acc: any, record: any) => {
                       if (record.present === true || record.status === 'on_time') acc.present++;
                       else if (record.status === 'absent') acc.absent++;
                       else if (record.status === 'late') acc.late++;
                       else if (record.status === 'half_day') acc.leave++;
                       if (record.work_type === 'wfh') acc.wfh++;
                       return acc;
-                    }, { present: 0, absent: 0, late: 0, wfh: 0, leave: 0 }) || { present: 0, absent: 0, late: 0, wfh: 0, leave: 0 };
+                    }, { present: 0, absent: 0, late: 0, wfh: 0, leave: 0 }) : { present: 0, absent: 0, late: 0, wfh: 0, leave: 0 };
 
                     const total = stats.present + stats.absent + stats.late + stats.wfh + stats.leave;
 
@@ -1080,7 +1026,7 @@ export default function ReportsPage() {
                 </thead>
 
                 <tbody>
-                  {QuarterlyTasksData?.map((item, index) => (
+                  {QuarterlyTasksData?.map((item: any, index: number) => (
                     <tr key={index}>
                       <td className="border px-3 py-2" style={{ color: 'black', blockSize: '40px' }}>{item.quarter}</td>
                       <td className="border px-3 py-2" style={{ color: 'black', blockSize: '40px' }}>{item.done}</td>

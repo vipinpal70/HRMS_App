@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '../components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
 import { useAuth } from '../context/AuthContext';
-import { getTasks, createTask, getEmployeesList, updateTaskStatus, createSelfTask, checkAndNotifyNoTasks, updateTask, deleteTask } from '../actions/tasks';
+import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/apiClient';
 import { toast } from 'react-hot-toast';
 import { useTransition } from 'react';
 import { cn } from '@/lib/utils';
@@ -117,10 +117,17 @@ export default function TasksPage() {
 
   const { data: tasksData, isLoading: loading } = useQuery({
     queryKey: ['tasks', userId, dateRange.start, dateRange.end, filteredEmployee],
-    queryFn: () => getTasks(userId, dateRange.start, dateRange.end, filteredEmployee),
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (userId) params.set('userId', userId);
+      if (dateRange.start) params.set('startDate', dateRange.start);
+      if (dateRange.end) params.set('endDate', dateRange.end);
+      if (filteredEmployee) params.set('employeeFilter', filteredEmployee);
+      return apiGet(`/api/tasks?${params.toString()}`);
+    },
   });
 
-  const tasks: Task[] = (tasksData as any[]) || [];
+  const tasks: Task[] = Array.isArray(tasksData) ? tasksData : [];
 
   // Update date range when filter changes
   useEffect(() => {
@@ -133,14 +140,16 @@ export default function TasksPage() {
 
   useEffect(() => {
     if (canManageTasks && (isAddOpen || viewAll)) {
-      getEmployeesList().then(setEmployees);
+      apiGet('/api/tasks?type=employees-list').then(res => {
+        if (Array.isArray(res)) setEmployees(res);
+      });
       if (isAddOpen) setSelectedAssigneeIds([]);
     }
   }, [canManageTasks, isAddOpen, viewAll]);
 
   // Trigger 11AM no-task notification check on mount (fire-and-forget)
   useEffect(() => {
-    checkAndNotifyNoTasks().catch(() => { });
+    apiPost('/api/tasks', { action: 'checkNotify' }).catch(() => { });
   }, []);
 
   // Reset visible tasks when filters change
@@ -156,9 +165,15 @@ export default function TasksPage() {
     }
     setSaving(true);
     const formData = new FormData(e.currentTarget);
-    formData.set('assigned_to', selectedAssigneeIds.join(',')); // Comma-separated for server action
-
-    const result = await createTask(formData);
+    const result = await apiPost('/api/tasks', {
+      action: 'create',
+      title: formData.get('title'),
+      description: formData.get('description'),
+      priority: formData.get('priority'),
+      assigned_to: selectedAssigneeIds.join(','),
+      start_day: formData.get('start_day'),
+      end_day: formData.get('end_day'),
+    });
 
     if (result.success) {
       toast.success(result.message);
@@ -175,7 +190,13 @@ export default function TasksPage() {
     e.preventDefault();
     setSelfSaving(true);
     const formData = new FormData(e.currentTarget);
-    const result = await createSelfTask(formData);
+    const result = await apiPost('/api/tasks', {
+      action: 'createSelf',
+      title: formData.get('title'),
+      description: formData.get('description'),
+      priority: formData.get('priority'),
+      start_day: formData.get('start_day'),
+    });
     if (result.success) {
       toast.success(result.message);
       setIsSelfAddOpen(false);
@@ -208,9 +229,16 @@ export default function TasksPage() {
 
     setSaving(true);
     const formData = new FormData(e.currentTarget);
-    formData.set('assigned_to', finalAssigneeId);
-
-    const result = await updateTask(editingTask.id, formData);
+    const result = await apiPatch('/api/tasks', {
+      action: 'update',
+      taskId: editingTask.id,
+      title: formData.get('title'),
+      description: formData.get('description'),
+      priority: formData.get('priority'),
+      assigned_to: finalAssigneeId,
+      start_day: formData.get('start_day'),
+      end_day: formData.get('end_day'),
+    });
 
     if (result.success) {
       toast.success(result.message);
@@ -227,7 +255,7 @@ export default function TasksPage() {
   const confirmDeleteTask = async () => {
     if (!deletingTaskId) return;
     setSaving(true);
-    const result = await deleteTask(deletingTaskId);
+    const result = await apiDelete(`/api/tasks?id=${deletingTaskId}`);
     if (result.success) {
       toast.success(result.message);
       setIsDeleteDialogOpen(false);
@@ -302,7 +330,7 @@ export default function TasksPage() {
 
     startTransition(async () => {
       try {
-        const result = await updateTaskStatus(taskId, newStatus);
+        const result = await apiPatch('/api/tasks', { action: 'updateStatus', taskId, status: newStatus });
         if (result.success && result.data) {
           toast.success(result.message);
           // Sync with server data: Invalidate queries to get absolute truth

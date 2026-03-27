@@ -3,7 +3,18 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Mail, Shield, User, Search, X, Phone, Calendar, Users } from 'lucide-react';
-import { getEmployees, Profile } from '@/app/actions/profile';
+import { apiGet } from '@/lib/apiClient';
+
+interface Profile {
+    id: string;
+    email: string;
+    name: string;
+    designation?: string;
+    phone?: string;
+    avatar_url?: string;
+    role?: string;
+    dob?: string;
+}
 import Skeleton from 'react-loading-skeleton';
 import 'react-loading-skeleton/dist/skeleton.css';
 
@@ -12,7 +23,7 @@ export default function TeamPage() {
 
   const { data: employeesData, isLoading: loading } = useQuery({
     queryKey: ['employees'],
-    queryFn: () => getEmployees(),
+    queryFn: () => apiGet('/api/profile?type=employees'),
   });
 
   const employees: Profile[] = (employeesData as any[]) || [];

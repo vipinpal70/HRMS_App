@@ -9,8 +9,8 @@ export default function QueryProvider({ children }: { children: ReactNode }) {
     const [queryClient] = useState(() => new QueryClient({
         defaultOptions: {
             queries: {
-                staleTime: 1000 * 60 * 60 * 24, // 24 hours
-                gcTime: 1000 * 60 * 60 * 24,    // 24 hours
+                staleTime: 1000 * 60 * 60 * 2, // 2 hours
+                gcTime: 1000 * 60 * 60 * 2,    // 2 hours
                 refetchOnWindowFocus: false,
                 refetchOnMount: false,
                 refetchOnReconnect: false,
@@ -23,7 +23,7 @@ export default function QueryProvider({ children }: { children: ReactNode }) {
     useEffect(() => {
         if (typeof window !== 'undefined') {
             const syncStoragePersister = createSyncStoragePersister({
-                storage: window.sessionStorage,
+                storage: window.localStorage,
             });
             setPersister(syncStoragePersister);
         }

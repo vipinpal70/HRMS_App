@@ -22,7 +22,7 @@ import {
   X,
 } from 'lucide-react';
 import NotificationBell from './NotificationBell';
-import { getCompanySettings } from '@/app/actions/settings';
+import { apiGet } from '@/lib/apiClient';
 import { useTheme } from 'next-themes';
 
 const navItems = [
@@ -78,7 +78,7 @@ export default function AppSidebar({
   useEffect(() => {
     setMounted(true);
     startTransition(async () => {
-      const data = await getCompanySettings();
+      const data = await apiGet('/api/settings');
       setSettings(data);
     });
   }, []);
