@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import Highcharts from "highcharts";
 import HighchartsReact from "highcharts-react-official";
 import { usePDF } from 'react-to-pdf';
@@ -398,8 +398,8 @@ export default function ReportsPage() {
       series: [
         {
           type: "pie",
-          name: "Attendance Data",
-          data: AttendanceData,
+          name: "Total Day",
+          data: DayData,
           size: "45%",
           dataLabels: {
             distance: -30,
@@ -410,8 +410,8 @@ export default function ReportsPage() {
         },
         {
           type: "pie",
-          name: "Total Day",
-          data: DayData,
+          name: "Attendance Data",
+          data: AttendanceData,
           size: "80%",
           innerSize: "60%",
           dataLabels: {
@@ -456,7 +456,7 @@ export default function ReportsPage() {
                   toPDF();
                 }, 1000);
               }}
-              className="flex items-center px-4 py-2 gap-2 bg-primary text-white rounded-lg hover:bg-primary/80 transition-colors text-sm font-medium mt-4 md:mt-0"
+              className="flex items-center px-4 py-2 gap-2 bg-primary text-white dark:text-black rounded-lg hover:bg-primary/80 transition-colors text-sm font-medium mt-4 md:mt-0"
             >
               <Download className="w-4 h-4" />
               Export to PDF

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, CheckCircle2, Clock, Circle, Search, Users, Calendar as CalendarIcon, Loader2, XCircle, Check, ChevronsUpDown, Edit2, Trash2 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -59,8 +60,7 @@ const priorityColors = {
 
 export default function TasksPage() {
   const { user } = useAuth();
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [viewAll, setViewAll] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [employeeFilter, setEmployeeFilter] = useState<string>('all');
@@ -112,27 +112,15 @@ export default function TasksPage() {
 
   const canManageTasks = user?.role === 'admin' || user?.role === 'hr';
 
-  const fetchTasks = async (silent = false) => {
-    if (!silent) setLoading(true);
-    try {
-      const userId = viewAll ? 'all' : undefined;
-      const data = await getTasks(
-        userId,
-        dateRange.start, // Always use dateRange for consistency
-        dateRange.end,
-        viewAll && employeeFilter !== 'all' ? employeeFilter : undefined
-      );
-      setTasks(data as any);
-    } catch (error) {
-      console.error('Failed to load tasks:', error);
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  };
+  const userId = viewAll ? 'all' : undefined;
+  const filteredEmployee = viewAll && employeeFilter !== 'all' ? employeeFilter : undefined;
 
-  useEffect(() => {
-    fetchTasks();
-  }, [viewAll, dateRange, employeeFilter]);
+  const { data: tasksData, isLoading: loading } = useQuery({
+    queryKey: ['tasks', userId, dateRange.start, dateRange.end, filteredEmployee],
+    queryFn: () => getTasks(userId, dateRange.start, dateRange.end, filteredEmployee),
+  });
+
+  const tasks: Task[] = (tasksData as any[]) || [];
 
   // Update date range when filter changes
   useEffect(() => {
@@ -175,7 +163,8 @@ export default function TasksPage() {
     if (result.success) {
       toast.success(result.message);
       setIsAddOpen(false);
-      fetchTasks(); // Refresh list
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboardTasks'] });
     } else {
       toast.error(result.error || 'Failed to create task.');
     }
@@ -190,7 +179,8 @@ export default function TasksPage() {
     if (result.success) {
       toast.success(result.message);
       setIsSelfAddOpen(false);
-      fetchTasks();
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboardTasks'] });
     } else {
       toast.error(result.error || 'Failed to add task.');
     }
@@ -226,7 +216,8 @@ export default function TasksPage() {
       toast.success(result.message);
       setIsEditOpen(false);
       setEditingTask(null);
-      fetchTasks();
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboardTasks'] });
     } else {
       toast.error(result.error || 'Failed to update task.');
     }
@@ -241,7 +232,8 @@ export default function TasksPage() {
       toast.success(result.message);
       setIsDeleteDialogOpen(false);
       setDeletingTaskId(null);
-      fetchTasks();
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboardTasks'] });
     } else {
       toast.error(result.error || 'Failed to delete task.');
     }
@@ -300,31 +292,32 @@ export default function TasksPage() {
   const progress = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
 
   const handleStatusChange = async (taskId: string, newStatus: string) => {
-    // 1. Optimistic Update: Update local state immediately
-    const previousTasks = [...tasks];
-    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus as TaskStatus } : t));
+    // 1. Optimistic Update: Update cache directly
+    queryClient.setQueriesData({ queryKey: ['tasks'] }, (old: any) => 
+      old ? old.map((t: any) => t.id === taskId ? { ...t, status: newStatus as TaskStatus } : t) : old
+    );
+    queryClient.setQueriesData({ queryKey: ['dashboardTasks'] }, (old: any) =>
+      old ? old.map((t: any) => t.id === taskId ? { ...t, status: newStatus as TaskStatus } : t) : old
+    );
 
     startTransition(async () => {
       try {
         const result = await updateTaskStatus(taskId, newStatus);
-
         if (result.success && result.data) {
           toast.success(result.message);
-          // 2. Sync with server data: Use the data returned from server
-          setTasks(prev => prev.map(t => t.id === taskId ? {
-            ...t,
-            status: result.data.status as TaskStatus,
-            updated_at: result.data.updated_at
-          } : t));
-          // We don't fetchTasks(true) immediately here to avoid write-read race conditions
-          // The local state is already synced with the server response
+          // Sync with server data: Invalidate queries to get absolute truth
+          queryClient.invalidateQueries({ queryKey: ['tasks'] });
+          queryClient.invalidateQueries({ queryKey: ['dashboardTasks'] });
         } else {
           toast.error(result.error || 'Failed to update status');
-          setTasks(previousTasks); // Revert on failure
+          // Revert optimistic update by invalidating
+          queryClient.invalidateQueries({ queryKey: ['tasks'] });
+          queryClient.invalidateQueries({ queryKey: ['dashboardTasks'] });
         }
       } catch (err) {
         toast.error('An unexpected error occurred.');
-        setTasks(previousTasks); // Revert on exception
+        queryClient.invalidateQueries({ queryKey: ['tasks'] });
+        queryClient.invalidateQueries({ queryKey: ['dashboardTasks'] });
       }
     });
   };

@@ -1,28 +1,56 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Mail, Shield, User, Search, X, Phone, Calendar, Users } from 'lucide-react';
 import { getEmployees, Profile } from '@/app/actions/profile';
-import { Mosaic } from 'react-loading-indicators';
+import Skeleton from 'react-loading-skeleton';
+import 'react-loading-skeleton/dist/skeleton.css';
 
 export default function TeamPage() {
-  const [employees, setEmployees] = useState<Profile[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
 
-  useEffect(() => {
-    async function load() {
-      const data = await getEmployees();
-      setEmployees(data);
-      setLoading(false);
-    }
-    load();
-  }, []);
+  const { data: employeesData, isLoading: loading } = useQuery({
+    queryKey: ['employees'],
+    queryFn: () => getEmployees(),
+  });
+
+  const employees: Profile[] = (employeesData as any[]) || [];
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <Mosaic color="#f88a10" size="small" text="" textColor="#f88a10" />
+      <div className="space-y-8 animate-fade-up max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <Skeleton width={40} height={40} borderRadius={8} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+              <Skeleton width={200} height={32} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+            </div>
+            <Skeleton width={250} height={16} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+          </div>
+          <div className="w-full md:w-96">
+            <Skeleton height={44} borderRadius={12} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="bg-card border border-border/50 rounded-2xl p-5 overflow-hidden">
+              <div className="flex flex-col items-center text-center space-y-4">
+                <Skeleton circle width={80} height={80} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+                <div className="space-y-2 w-full flex flex-col items-center">
+                  <Skeleton width={120} height={20} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+                  <Skeleton width={100} height={24} borderRadius={12} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+                </div>
+                <div className="w-full pt-4 border-t border-border/50 space-y-3 flex flex-col items-center">
+                  <Skeleton width={140} height={16} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+                  <Skeleton width={120} height={16} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+                  <Skeleton width={100} height={16} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     );
   }

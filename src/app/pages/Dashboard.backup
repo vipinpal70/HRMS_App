@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import {
   Clock,
@@ -28,7 +28,7 @@ import { toast } from 'react-hot-toast';
 import Link from 'next/link';
 import Skeleton from 'react-loading-skeleton';
 import 'react-loading-skeleton/dist/skeleton.css';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 
 const holidayTypeStyles = {
   holiday: 'bg-destructive/10 text-destructive',
@@ -61,93 +61,98 @@ interface AttendanceRecord {
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const queryClient = useQueryClient();
-
+  const [checkedIn, setCheckedIn] = useState(false);
+  const [todayData, setTodayData] = useState<any>(null);
+  const [checkInTime, setCheckInTime] = useState<Date | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [ipValid, setIpValid] = useState(true);
   const [locationValid, setLocationValid] = useState(true);
   const [calendarDate, setCalendarDate] = useState<Date | undefined>(new Date());
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [officeHours, setOfficeHours] = useState<{ start: string; end: string }>({ start: '09:00', end: '19:00' });
   const [isWithinHours, setIsWithinHours] = useState(true);
+  const [records, setRecords] = useState<AttendanceRecord[]>([]);
+  const [tasks, setTasks] = useState<any[]>([]);
+  const [quote, setQuote] = useState<{ q: string; a: string } | null>(null);
   const [currentYear] = useState(new Date().getFullYear());
+  const [holidays, setHolidays] = useState<{ date: Date; label: string; type: 'holiday' | 'event' }[]>([]);
+  const [effectiveWorkType, setEffectiveWorkType] = useState<'office' | 'wfh' | 'hybrid' | 'leave' | 'halfday'>('office');
 
-  const { data: todayData, isLoading: loadingToday } = useQuery({
-    queryKey: ['todayStatus'],
-    queryFn: () => getTodayStatus(),
-    staleTime: 0, // keep the live timer fresh
-  });
 
-  const { data: settingsData, isLoading: loadingSettings } = useQuery({
-    queryKey: ['companySettings'],
-    queryFn: () => getCompanySettings(),
-  });
 
-  const { data: historyData, isLoading: loadingHistory } = useQuery({
-    queryKey: ['attendanceHistory'],
-    queryFn: () => getAttendanceHistory(),
-  });
+  function useDashboardData() {
+    return useQuery({
+      queryKey: ['dashboard_stats'],
+      queryFn: async () => {
+        const [today, settings, history, tasks, workType, quote, holidays] = await Promise.all([
+          getTodayStatus(),
+          getCompanySettings(),
+          getAttendanceHistory(),
+          getTasks(),
+          getEffectiveWorkType(),
+          getQuoteOfDay(),
+          getYearHolidays(new Date().getFullYear()),
+        ]);
 
-  const { data: tasksData, isLoading: loadingTasks } = useQuery({
-    queryKey: ['dashboardTasks'],
-    queryFn: () => getTasks(),
-  });
+        return { today, settings, history, tasks, workType, quote, holidays };
+      },
+      // This keeps the data "fresh" for 5 minutes, but revalidates in the background
+      staleTime: 1000 * 60 * 5,
+    });
+  }
 
-  const { data: workTypeData, isLoading: loadingWorkType } = useQuery({
-    queryKey: ['effectiveWorkType'],
-    queryFn: () => getEffectiveWorkType(),
-  });
-
-  const { data: quote, isLoading: loadingQuote } = useQuery({
-    queryKey: ['quoteOfDay'],
-    queryFn: () => getQuoteOfDay(),
-  });
-
-  const { data: yearData, isLoading: loadingYearData } = useQuery({
-    queryKey: ['yearHolidays', currentYear],
-    queryFn: () => getYearHolidays(currentYear),
-  });
-
-  const initialLoading = loadingToday || loadingSettings || loadingHistory || loadingTasks || loadingWorkType || loadingQuote || loadingYearData;
-
-  const officeHours = useMemo(() => {
-    if (!settingsData) return { start: '09:00', end: '19:00' };
-    return {
-      start: settingsData.office_start_time?.substring(0, 5) ?? '09:30',
-      end: settingsData.office_end_time?.substring(0, 5) ?? '19:00'
-    };
-  }, [settingsData]);
-
-  const effectiveWorkType = (workTypeData as any) || 'office';
-  const records = (historyData as unknown as AttendanceRecord[]) || [];
-  const tasks: any[] = (tasksData as any[]) || [];
-  
-  const holidays: { date: Date; label: string; type: 'holiday' | 'event' }[] = useMemo(() => {
-    if (!yearData) return [];
-    return (yearData as any[]).map((h: any) => ({
-      date: new Date(h.date),
-      label: h.description,
-      type: h.type
-    }));
-  }, [yearData]);
-
-  const [checkedIn, setCheckedIn] = useState(false);
-  const [checkInTime, setCheckInTime] = useState<Date | null>(null);
-
+  // Fetch initial status + office hours
   useEffect(() => {
-    if (todayData) {
-      const hasActiveSession2 = !!todayData.check_in_2 && !todayData.check_out_2;
-      const hasActiveSession1 = !!todayData.check_in_1 && !todayData.check_out_1;
-      const isCheckedIn = hasActiveSession2 || hasActiveSession1;
-      setCheckedIn(isCheckedIn);
-      if (hasActiveSession2 && todayData.check_in_2) {
-        setCheckInTime(new Date(todayData.check_in_2));
-      } else if (hasActiveSession1 && todayData.check_in_1) {
-        setCheckInTime(new Date(todayData.check_in_1));
-      } else {
-        setCheckInTime(null);
+    async function fetchStatus() {
+      try {
+        const [data, settings, history, tasklist, workType] = await Promise.all([
+          getTodayStatus(),
+          getCompanySettings(),
+          getAttendanceHistory(),
+          getTasks(),
+          getEffectiveWorkType()
+        ]);
+
+        if (data) {
+          setTodayData(data);
+          // Detect if currently checked in: session 2 open takes priority, else session 1
+          const hasActiveSession2 = !!data.check_in_2 && !data.check_out_2;
+          const hasActiveSession1 = !!data.check_in_1 && !data.check_out_1;
+          const isCheckedIn = hasActiveSession2 || hasActiveSession1;
+          setCheckedIn(isCheckedIn);
+          if (hasActiveSession2 && data.check_in_2) {
+            setCheckInTime(new Date(data.check_in_2));
+          } else if (hasActiveSession1 && data.check_in_1) {
+            setCheckInTime(new Date(data.check_in_1));
+          }
+        }
+
+        if (settings) {
+          const start = settings.office_start_time?.substring(0, 5) ?? '09:30';
+          const end = settings.office_end_time?.substring(0, 5) ?? '19:00';
+          setOfficeHours({ start, end });
+        }
+
+        if (history) {
+          setRecords(history as unknown as AttendanceRecord[]);
+        }
+
+        if (tasklist) {
+          setTasks(tasklist);
+        }
+
+        if (workType) {
+          setEffectiveWorkType(workType as any);
+        }
+      } catch (error) {
+        console.error('Error fetching status:', error);
+      } finally {
+        setInitialLoading(false);
       }
     }
-  }, [todayData]);
+    fetchStatus();
+  }, []);
 
   // Check office hours every minute
   useEffect(() => {
@@ -168,7 +173,9 @@ export default function Dashboard() {
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (checkedIn && checkInTime) {
+      // Update elapsed time immediately
       setElapsed(Math.floor((Date.now() - checkInTime.getTime()) / 1000));
+
       interval = setInterval(() => {
         setElapsed(Math.floor((Date.now() - checkInTime.getTime()) / 1000));
       }, 1000);
@@ -177,6 +184,34 @@ export default function Dashboard() {
     }
     return () => clearInterval(interval);
   }, [checkedIn, checkInTime]);
+
+  // daily motivation quotes
+  useEffect(() => {
+    const fetchQuotes = async () => {
+      const data = await getQuoteOfDay();
+      if (data) {
+        setQuote(data);
+      }
+    }
+    fetchQuotes();
+  }, [])
+
+  useEffect(() => {
+    async function fetchHolidays() {
+      try {
+        const yearData = await getYearHolidays(currentYear);
+        const mappedHolidays = yearData.map((h: any) => ({
+          date: new Date(h.date),
+          label: h.description,
+          type: h.type
+        }));
+        setHolidays(mappedHolidays);
+      } catch (error) {
+        console.error('Error fetching holidays:', error);
+      }
+    }
+    fetchHolidays();
+  }, [currentYear]);
 
 
   // Handle Check In
@@ -205,10 +240,10 @@ export default function Dashboard() {
             setCheckInTime(new Date());
             // Refresh today's record to get updated work_type/session state
             const refreshed = await getTodayStatus();
-            if (refreshed) queryClient.setQueryData(['todayStatus'], refreshed);
+            if (refreshed) setTodayData(refreshed);
             // Also refresh effective work type in case a leave was just approved (less likely but good for consistency)
             const workType = await getEffectiveWorkType();
-            if (workType) queryClient.setQueryData(['effectiveWorkType'], workType);
+            if (workType) setEffectiveWorkType(workType as any);
           }
         } catch (error) {
           toast.error('Failed to check in');
@@ -260,7 +295,7 @@ export default function Dashboard() {
         setCheckInTime(null);
         // Refresh today's record so office-done state is detected immediately
         const refreshed = await getTodayStatus();
-        if (refreshed) queryClient.setQueryData(['todayStatus'], refreshed);
+        if (refreshed) setTodayData(refreshed);
       }
     } catch (error) {
       toast.error('Failed to check out');

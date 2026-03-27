@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect, useCallback, useTransition } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   Clock, Users, ChevronLeft, ChevronRight, Download, CalendarDays,
-  TrendingUp, UserCheck, AlertCircle, Coffee, Search, X
+  TrendingUp, UserCheck, AlertCircle, Coffee, Search, X, ChevronDown
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { getMyAttendance, getEmployeesAttendance, getEmployeeListForFilter } from '../actions/attendance';
@@ -125,7 +126,24 @@ function exportToCSV(records: AttendanceRecord[], fileName: string) {
       ];
   });
 
-  const csv = [headers, ...rows].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
+  const presentCount = records.filter(r => r.check_in_1 != null).length;
+  const absentCount = records.filter(r => r.status === 'absent').length;
+  const wfhCount = records.filter(r => r.work_type === 'wfh' || r.status === 'wfh').length;
+  const totalDaysWork = presentCount + wfhCount;
+  const totalWorkingDays = records.length;
+
+  const summaryRows = [
+    [],
+    ['Summary:'],
+    ['Total Working Days', totalWorkingDays.toString()],
+    ['Present', presentCount.toString()],
+    ['Absent', absentCount.toString()],
+    ['Total Days Worked (Present + WFH)', totalDaysWork.toString()],
+    ['Total Salary', '']
+  ];
+
+  const allRows = [headers, ...rows, ...summaryRows];
+  const csv = allRows.map(row => row.map(cell => `"${cell || ''}"`).join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -366,25 +384,13 @@ function MyAttendanceView() {
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
-  const [records, setRecords] = useState<AttendanceRecord[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [isPending, startTransition] = useTransition();
 
-  const fetch = useCallback(() => {
-    setLoading(true);
-    startTransition(async () => {
-      try {
-        const data = await getMyAttendance(month, year);
-        setRecords(data as AttendanceRecord[]);
-      } catch {
-        toast.error('Failed to load attendance');
-      } finally {
-        setLoading(false);
-      }
-    });
-  }, [month, year]);
-
-  useEffect(() => { fetch(); }, [fetch]);
+  const { data: recordsData, isLoading: loading } = useQuery({
+    queryKey: ['myAttendance', month, year],
+    queryFn: () => getMyAttendance(month, year),
+  });
+  
+  const records: AttendanceRecord[] = (recordsData as any[]) || [];
 
   return (
     <div className="space-y-5">
@@ -434,41 +440,18 @@ function AllEmployeesView() {
   const [year, setYear] = useState(now.getFullYear());
   const [selectedEmployee, setSelectedEmployee] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [employees, setEmployees] = useState<Employee[]>([]);
-  const [records, setRecords] = useState<AttendanceRecord[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [empLoading, setEmpLoading] = useState(true);
-  const [isPending, startTransition] = useTransition();
 
-  // Load employee list once
-  useEffect(() => {
-    startTransition(async () => {
-      try {
-        const data = await getEmployeeListForFilter();
-        setEmployees(data as Employee[]);
-      } catch {
-        toast.error('Failed to load employees');
-      } finally {
-        setEmpLoading(false);
-      }
-    });
-  }, []);
+  const { data: employeesData, isLoading: empLoading } = useQuery({
+    queryKey: ['employeesFilterList'],
+    queryFn: () => getEmployeeListForFilter(),
+  });
+  const employees: Employee[] = (employeesData as any[]) || [];
 
-  const fetch = useCallback(() => {
-    setLoading(true);
-    startTransition(async () => {
-      try {
-        const data = await getEmployeesAttendance(month, year, selectedEmployee);
-        setRecords(data as AttendanceRecord[]);
-      } catch {
-        toast.error('Failed to load attendance');
-      } finally {
-        setLoading(false);
-      }
-    });
-  }, [month, year, selectedEmployee]);
-
-  useEffect(() => { fetch(); }, [fetch]);
+  const { data: recordsData, isLoading: loading } = useQuery({
+    queryKey: ['allEmployeesAttendance', month, year, selectedEmployee],
+    queryFn: () => getEmployeesAttendance(month, year, selectedEmployee),
+  });
+  const records: AttendanceRecord[] = (recordsData as any[]) || [];
 
   const selectedEmpName = employees.find(e => e.id === selectedEmployee)?.name;
   const exportFileName = selectedEmployee === 'all'
@@ -506,6 +489,7 @@ function AllEmployeesView() {
                 </option>
               ))}
             </select>
+            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
           </div>
 
           {/* Month picker */}
@@ -516,7 +500,7 @@ function AllEmployeesView() {
         {filteredRecords.length > 0 && (
           <button
             onClick={() => exportToCSV(filteredRecords, exportFileName)}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-white hover:bg-primary/80 transition-colors text-sm font-medium shadow-sm"
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-white dark:text-black hover:bg-primary/80 transition-colors text-sm font-medium shadow-sm"
           >
             <Download className="w-4 h-4" /> Export to Excel
           </button>

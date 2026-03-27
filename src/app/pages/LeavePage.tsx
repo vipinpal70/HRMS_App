@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -59,11 +60,10 @@ const typeLabels: Record<string, string> = {
 export default function LeavePage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin' || user?.role === 'hr';
-  const [requests, setRequests] = useState<LeaveRequest[]>([]);
+  const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ type: 'full-day' as LeaveType, startDate: '', endDate: '', reason: '' });
   const [searchQuery, setSearchQuery] = useState('');
-  const [loading, setLoading] = useState(true);
 
   // Date Range Helpers
   const getWeekDates = () => {
@@ -91,40 +91,32 @@ export default function LeavePage() {
   const [dateRange, setDateRange] = useState(getMonthDates);
   const [timeFilter, setTimeFilter] = useState<'week' | 'month'>('month');
 
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      const data = await getLeaveRequests(isAdmin ? 'all' : undefined, dateRange.start, dateRange.end);
+  const { data: requestsData, isLoading: loading } = useQuery({
+    queryKey: ['leaveRequests', isAdmin ? 'all' : undefined, dateRange.start, dateRange.end],
+    queryFn: () => getLeaveRequests(isAdmin ? 'all' : undefined, dateRange.start, dateRange.end),
+  });
 
-      // Sort: retraction_pending first, then pending, then others
-      const sortedData = [...(data as any)].sort((a, b) => {
-        const order: Record<string, number> = {
-          'retraction_pending': 0,
-          'pending': 1,
-          'approved': 2,
-          'rejected': 3,
-          'cancelled': 4
-        };
-        const statusA = order[a.status] ?? 5;
-        const statusB = order[b.status] ?? 5;
+  const requests: LeaveRequest[] = useMemo(() => {
+    if (!requestsData) return [];
+    const sortedData = [...(requestsData as any[])].sort((a, b) => {
+      const order: Record<string, number> = {
+        'retraction_pending': 0,
+        'pending': 1,
+        'approved': 2,
+        'rejected': 3,
+        'cancelled': 4
+      };
+      const statusA = order[a.status] ?? 5;
+      const statusB = order[b.status] ?? 5;
 
-        if (statusA !== statusB) return statusA - statusB;
+      if (statusA !== statusB) return statusA - statusB;
 
-        // Secondary sort by date (newest first)
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-      });
+      // Secondary sort by date (newest first)
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
 
-      setRequests(sortedData);
-    } catch (error) {
-      console.error('Failed to load leaves:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchData();
-  }, [dateRange]);
+    return sortedData;
+  }, [requestsData]);
 
   // Update date range when filter changes
   useEffect(() => {
@@ -141,7 +133,7 @@ export default function LeavePage() {
     const result = await deleteLeaveRequest(id);
     if (result.success) {
       toast.success(result.message);
-      fetchData();
+      queryClient.invalidateQueries({ queryKey: ['leaveRequests'] });
     } else {
       toast.error(result.error || 'Failed to delete request.');
     }
@@ -162,7 +154,7 @@ export default function LeavePage() {
       toast.success(result.message);
       setForm({ type: 'full-day', startDate: '', endDate: '', reason: '' });
       setShowForm(false);
-      fetchData();
+      queryClient.invalidateQueries({ queryKey: ['leaveRequests'] });
     } else {
       toast.error(result.error || 'Failed to submit request.');
     }
@@ -172,7 +164,7 @@ export default function LeavePage() {
     const result = await retractLeaveRequest(id);
     if (result.success) {
       toast.success(result.message);
-      fetchData();
+      queryClient.invalidateQueries({ queryKey: ['leaveRequests'] });
     } else {
       toast.error(result.error || 'Failed to retract request.');
     }
@@ -183,7 +175,7 @@ export default function LeavePage() {
     const result = await updateLeaveStatus(id, status);
     if (result.success) {
       toast.success(result.message);
-      fetchData();
+      queryClient.invalidateQueries({ queryKey: ['leaveRequests'] });
     } else {
       toast.error(result.error || 'Failed to update status.');
     }

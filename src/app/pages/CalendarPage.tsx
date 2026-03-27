@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, ChevronRight, Palmtree, Plus, Loader2, Trash, Star } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { useAuth } from '../context/AuthContext';
@@ -25,47 +26,41 @@ const typeColors = {
 export default function CalendarPage() {
   const { user, loading: authLoading } = useAuth();
   const role = user?.role;
+  const queryClient = useQueryClient();
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
   const [currentYear] = useState(new Date().getFullYear());
-  const [events, setEvents] = useState<CalendarEvent[]>([]);
-  const [yearHolidays, setYearHolidays] = useState<CalendarEvent[]>([]);
-  const [loading, setLoading] = useState(true);
 
   // Form state
   const [holidayName, setHolidayName] = useState('');
   const [holidayDate, setHolidayDate] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const { data: monthData, isLoading: loadingEvents } = useQuery({
+    queryKey: ['calendarEvents', currentMonth + 1, currentYear],
+    queryFn: () => getCalendarEvents(currentMonth + 1, currentYear),
+    enabled: !!user,
+  });
+
+  const { data: yearDataRaw, isLoading: loadingHolidays } = useQuery({
+    queryKey: ['yearHolidays', currentYear],
+    queryFn: () => getYearHolidays(currentYear),
+    enabled: !!user,
+  });
+
+  const events: CalendarEvent[] = (monthData as any[]) || [];
+  const yearHolidays: CalendarEvent[] = useMemo(() => {
+    if (!yearDataRaw) return [];
+    const todayStr = new Date().toISOString().split('T')[0];
+    return (yearDataRaw as any[])
+      .filter(h => new Date(h.date).toISOString().split('T')[0] >= todayStr)
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  }, [yearDataRaw]);
+
   useEffect(() => {
-    async function loadData() {
-      if (!user) return;
-      setLoading(true);
-      try {
-        // Ensure weekends are there (doesn't overwrite existing holidays now)
-        await ensureMonthWeekends(currentMonth + 1, currentYear);
-
-        // Fetch month events (for grid)
-        const monthData = await getCalendarEvents(currentMonth + 1, currentYear);
-        setEvents(monthData as any);
-
-        // Fetch year holidays (for upcoming list)
-        const yearData = await getYearHolidays(currentYear);
-        // Filter for upcoming (today or later) and sort
-        const todayStr = new Date().toISOString().split('T')[0];
-        const upcomingHolidays = yearData
-          .filter(h => new Date(h.date).toISOString().split('T')[0] >= todayStr)
-          .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-        setYearHolidays(upcomingHolidays as any);
-      } catch (err) {
-        console.error('Failed to load calendar events:', err);
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadData();
+    if (user) ensureMonthWeekends(currentMonth + 1, currentYear).catch(() => {});
   }, [currentMonth, currentYear, user]);
 
-  if (authLoading || (loading && events.length === 0)) {
+  if (authLoading || (loadingEvents && events.length === 0)) {
     return (
       <div className="space-y-6 animate-fade-up">
         <div>
@@ -125,12 +120,8 @@ export default function CalendarPage() {
       setHolidayName('');
       setHolidayDate('');
       toast.success('Holiday added successfully');
-      // Refresh all data
-      const monthData = await getCalendarEvents(currentMonth + 1, currentYear);
-      setEvents(monthData as any);
-      const yearData = await getYearHolidays(currentYear);
-      const todayStr = new Date().toISOString().split('T')[0];
-      setYearHolidays(yearData.filter(h => h.date.toString() >= todayStr) as any);
+      queryClient.invalidateQueries({ queryKey: ['calendarEvents'] });
+      queryClient.invalidateQueries({ queryKey: ['yearHolidays'] });
     } else {
       toast.error(res.error || 'Failed to add holiday');
     }
@@ -168,12 +159,8 @@ export default function CalendarPage() {
 
     if (res.success) {
       toast.success('Holiday deleted successfully');
-      // Refresh all data
-      const monthData = await getCalendarEvents(currentMonth + 1, currentYear);
-      setEvents(monthData as any);
-      const yearData = await getYearHolidays(currentYear);
-      const todayStr = new Date().toISOString().split('T')[0];
-      setYearHolidays(yearData.filter(h => h.date.toString() >= todayStr) as any);
+      queryClient.invalidateQueries({ queryKey: ['calendarEvents'] });
+      queryClient.invalidateQueries({ queryKey: ['yearHolidays'] });
     } else {
       toast.error(res.error || 'Failed to delete holiday');
     }

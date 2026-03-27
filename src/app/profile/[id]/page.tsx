@@ -106,6 +106,12 @@ export default function ProfilePage() {
         const file = e.target.files?.[0];
         if (!file || !profile) return;
 
+        if (file.size > 20 * 1024) {
+            toast.error('Image size must be less than 20KB');
+            e.target.value = '';
+            return;
+        }
+
         setIsUploading(true);
         try {
             const formData = new FormData();

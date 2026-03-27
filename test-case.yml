@@ -137,3 +137,18 @@ fixed:
 
 not fixed:
   - clear notification issue: the notifications do not dismiss when clear button is clicked and also not showing any error message.
+
+
+
+
+
+Attandance page: 
+    - in attandance sheet: formula to show total of all the fields (total working days in month, preset, absent, total days work: preset+wfh, and inlude a total salary field) -> done
+
+    - put arrow icon in dropdown -> done
+
+All the email will be use official company email id: 
+    - start with "name" + "@elevanaconsultancy.com"
+
+Reports page:
+    - pie chart should show full data(absent+preset) -> done

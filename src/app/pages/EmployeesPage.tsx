@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Mail, Shield, Loader2, User, Trash, Search, X } from 'lucide-react';
 import { Badge } from '../components/ui/badge';
 import { deleteProfile, getEmployees, Profile } from '@/app/actions/profile';
@@ -10,20 +11,17 @@ import 'react-loading-skeleton/dist/skeleton.css';
 
 
 export default function EmployeesPage() {
-  const [employees, setEmployees] = useState<Profile[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  useEffect(() => {
-    async function load() {
-      const data = await getEmployees();
-      setEmployees(data);
-      setLoading(false);
-    }
-    load();
-  }, []);
+  const { data: employeesData, isLoading: loading } = useQuery({
+    queryKey: ['employees'],
+    queryFn: () => getEmployees(),
+  });
+  
+  const employees: Profile[] = (employeesData as any[]) || [];
 
   const confirmDelete = async () => {
     if (!confirmDeleteId) return;
@@ -31,7 +29,7 @@ export default function EmployeesPage() {
     const res = await deleteProfile(confirmDeleteId);
     console.log("Delete response:", res);
     if (res.success) {
-      setEmployees(employees.filter(emp => emp.id !== confirmDeleteId));
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
     }
     setDeleting(false);
     setConfirmDeleteId(null);

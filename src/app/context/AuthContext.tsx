@@ -164,8 +164,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else if (event === 'SIGNED_OUT') {
         setUser(null)
         setLoading(false); // Ensure loading is cleared on sign-out
-        // router.refresh()
-        router.push('/login')
+        sessionStorage.clear();
+        window.location.href = '/login';
       }
     })
 
@@ -179,9 +179,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const logout = async () => {
+    sessionStorage.clear();
     await supabase.auth.signOut()
     setUser(null)
-    router.push('/login')
+    window.location.href = '/login';
   }
 
   return (

@@ -6,6 +6,7 @@ import { AuthProvider } from "./context/AuthContext";
 import AppLayout from "./components/AppLayout";
 import { Toaster } from "react-hot-toast";
 import { ThemeProvider } from "./components/ThemeProvider";
+import QueryProvider from "./providers/QueryProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -41,8 +42,10 @@ export default function RootLayout({
       >
         <AuthProvider>
           <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-            <AppLayout>{children}</AppLayout>
-            <Toaster position="top-center" />
+            <QueryProvider>
+              <AppLayout>{children}</AppLayout>
+              <Toaster position="top-center" />
+            </QueryProvider>
           </ThemeProvider>
         </AuthProvider>
       </body>
