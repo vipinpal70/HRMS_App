@@ -104,6 +104,10 @@ export default function LeavePage() {
       if (dateRange.end) params.set('endDate', dateRange.end);
       return apiGet(`/api/leave?${params.toString()}`);
     },
+    refetchInterval: 3600000,
+    refetchOnMount: true,
+    refetchIntervalInBackground: true,
+    staleTime: 3600000,
   });
 
   const requests: LeaveRequest[] = useMemo(() => {

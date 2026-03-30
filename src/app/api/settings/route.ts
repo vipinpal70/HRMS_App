@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
+import { getCompanySettings } from '@/lib/settings';
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,22 +15,11 @@ export async function GET(request: NextRequest) {
     }
 
     // Default: get company settings
-    const { data, error } = await supabase.from('company_settings').select('*').single();
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return NextResponse.json({ organization_name: 'AttendX Corp', office_lat: 28.41607, office_lng: 77.09253, allowed_radius_meters: 500, allowed_ip_range: '127.0.0.1', office_start_time: '09:00', office_end_time: '19:00' });
-      }
-      throw error;
+    const settings = await getCompanySettings();
+    if (!settings) {
+      throw new Error('Failed to fetch settings');
     }
-    return NextResponse.json({
-      ...data,
-      allowed_ip_range: data.allowed_ip_range || '127.0.0.1',
-      office_lat: data.office_lat ?? 28.41607,
-      office_lng: data.office_lng ?? 77.09253,
-      allowed_radius_meters: data.allowed_radius_meters ?? 500,
-      office_start_time: data.office_start_time ?? '09:00',
-      office_end_time: data.office_end_time ?? '18:00'
-    });
+    return NextResponse.json(settings);
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

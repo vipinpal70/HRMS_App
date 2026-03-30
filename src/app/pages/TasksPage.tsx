@@ -127,6 +127,11 @@ export default function TasksPage() {
       if (filteredEmployee) params.set('employeeFilter', filteredEmployee);
       return apiGet(`/api/tasks?${params.toString()}`);
     },
+    refetchInterval: 10000,
+    refetchOnMount: true,
+    refetchIntervalInBackground: true,
+    staleTime: 10000,
+
   });
 
   const rawTasks: Task[] = Array.isArray(tasksData) ? tasksData : [];
@@ -387,14 +392,17 @@ export default function TasksPage() {
             </button>
           </div>
 
-          <Button
-            variant={viewAll ? "secondary" : "outline"}
-            onClick={() => setViewAll(!viewAll)}
-            className="gap-2"
-          >
-            <Users className="w-4 h-4" />
-            {viewAll ? 'My Tasks' : 'All Tasks'}
-          </Button>
+          {canManageTasks && (
+            <Button
+              variant={viewAll ? "secondary" : "outline"}
+              onClick={() => setViewAll(!viewAll)}
+              className="gap-2"
+            >
+              <Users className="w-4 h-4" />
+              {viewAll ? 'My Tasks' : 'All Tasks'}
+            </Button>
+          )}
+
 
           {canManageTasks ? (
             <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>

@@ -90,6 +90,8 @@ export default function LoginPage() {
         const { latitude, longitude } = position.coords
         const result = await apiPost('/api/auth-advanced', { action: 'loginWithGps', email, latitude, longitude })
         console.log("result: ", result)
+        console.log("latitude: ", latitude)
+        console.log("longitude: ", longitude)
 
         if (result.error) {
           setError(result.error)

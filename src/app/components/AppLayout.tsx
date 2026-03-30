@@ -8,6 +8,7 @@ import AppSidebar from './AppSidebar';
 import TaskReminder from './TaskReminder';
 import { Loader2, Menu } from 'lucide-react';
 import { useState } from 'react';
+import { Mosaic } from 'react-loading-indicators';
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -34,7 +35,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        <Mosaic size='small' color='primary' />
       </div>
     );
   }
