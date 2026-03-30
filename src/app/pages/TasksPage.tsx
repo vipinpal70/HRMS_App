@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, CheckCircle2, Clock, Circle, Search, Users, Calendar as CalendarIcon, Loader2, XCircle, Check, ChevronsUpDown, Edit2, Trash2 } from 'lucide-react';
+import { Plus, CheckCircle2, Clock, Circle, Search, Users, Calendar as CalendarIcon, Loader2, XCircle, Check, ChevronsUpDown, Edit2, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Progress } from '../components/ui/progress';
@@ -58,12 +58,15 @@ const priorityColors = {
   critical: 'bg-red-100 text-red-600'
 };
 
+const RECORDS_PER_PAGE = 10;
+
 export default function TasksPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [viewAll, setViewAll] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [employeeFilter, setEmployeeFilter] = useState<string>('all');
+  const [currentPage, setCurrentPage] = useState(1);
   const [isPending, startTransition] = useTransition();
 
   // Add Task Form State
@@ -108,7 +111,6 @@ export default function TasksPage() {
 
   const [dateRange, setDateRange] = useState(getMonthDates);
   const [timeFilter, setTimeFilter] = useState<'week' | 'month'>('month');
-  const [visibleTasksCount, setVisibleTasksCount] = useState<number>(6);
 
   const canManageTasks = user?.role === 'admin' || user?.role === 'hr';
 
@@ -127,9 +129,48 @@ export default function TasksPage() {
     },
   });
 
-  const tasks: Task[] = Array.isArray(tasksData) ? tasksData : [];
+  const rawTasks: Task[] = Array.isArray(tasksData) ? tasksData : [];
 
-  // Update date range when filter changes
+  // Sort by latest first across all tasks before searching/paginating
+  const allTasksSorted = [...rawTasks].sort((a, b) =>
+    new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
+
+  // Client-side filtering (search)
+  const filtered = allTasksSorted.filter((t) => {
+    const q = searchQuery.toLowerCase();
+    return !searchQuery ||
+      t.title.toLowerCase().includes(q) ||
+      t.description?.toLowerCase().includes(q) ||
+      (viewAll && (
+        t.assignee_name?.toLowerCase().includes(q) ||
+        t.assignee_email?.toLowerCase().includes(q)
+      ));
+  });
+
+  // Pagination logic
+  const totalPages = Math.ceil(filtered.length / RECORDS_PER_PAGE);
+  const paginatedTasks = filtered.slice(
+    (currentPage - 1) * RECORDS_PER_PAGE,
+    currentPage * RECORDS_PER_PAGE
+  );
+
+  // Grouping Logic (apply to paginated set for performance and UI clarity)
+  const groupedTasks = paginatedTasks.reduce((acc, task) => {
+    const date = task.start_day;
+    if (!acc[date]) acc[date] = [];
+    acc[date].push(task);
+    return acc;
+  }, {} as Record<string, Task[]>);
+
+  const sortedDates = Object.keys(groupedTasks).sort((a, b) => b.localeCompare(a));
+
+  // Reset to page 1 on filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, employeeFilter, timeFilter, viewAll, dateRange.start, dateRange.end]);
+
+  // Update date range when shortcut changes
   useEffect(() => {
     if (timeFilter === 'week') {
       setDateRange(getWeekDates());
@@ -147,15 +188,10 @@ export default function TasksPage() {
     }
   }, [canManageTasks, isAddOpen, viewAll]);
 
-  // Trigger 11AM no-task notification check on mount (fire-and-forget)
+  // Trigger 11AM no-task notification check on mount
   useEffect(() => {
     apiPost('/api/tasks', { action: 'checkNotify' }).catch(() => { });
   }, []);
-
-  // Reset visible tasks when filters change
-  useEffect(() => {
-    setVisibleTasksCount(6);
-  }, [searchQuery, employeeFilter, timeFilter, viewAll]);
 
   const handleCreateTask = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -218,8 +254,6 @@ export default function TasksPage() {
     e.preventDefault();
     if (!editingTask) return;
 
-    // Admin/HR might need to assign, employees might not see the combobox.
-    // If the combobox was used, selectedAssigneeIds is set. Otherwise, fallback to existing task assignee.
     const finalAssigneeId = selectedAssigneeIds[0] || editingTask.assignee_id || user?.id;
 
     if (!finalAssigneeId) {
@@ -274,27 +308,8 @@ export default function TasksPage() {
     );
   };
 
-  const filtered = tasks.filter((t) => {
-    const matchesSearch = !viewAll || !searchQuery ||
-      (t.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        t.assignee_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        t.assignee_email?.toLowerCase().includes(searchQuery.toLowerCase()));
-    return matchesSearch;
-  });
-
-  const displayedTasks = filtered.slice(0, visibleTasksCount);
-
-  // Grouping Logic
-  const groupedTasks = displayedTasks.reduce((acc, task) => {
-    const date = task.start_day;
-    if (!acc[date]) acc[date] = [];
-    acc[date].push(task);
-    return acc;
-  }, {} as Record<string, Task[]>);
-
-  const sortedDates = Object.keys(groupedTasks).sort((a, b) => b.localeCompare(a));
-
   const formatDateHeader = (dateStr: string) => {
+    if (dateStr === 'Unknown') return 'Unscheduled';
     const date = new Date(dateStr);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -320,32 +335,24 @@ export default function TasksPage() {
   const progress = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
 
   const handleStatusChange = async (taskId: string, newStatus: string) => {
-    // 1. Optimistic Update: Update cache directly
-    queryClient.setQueriesData({ queryKey: ['tasks'] }, (old: any) => 
-      old ? old.map((t: any) => t.id === taskId ? { ...t, status: newStatus as TaskStatus } : t) : old
-    );
-    queryClient.setQueriesData({ queryKey: ['dashboardTasks'] }, (old: any) =>
+    // Optimistic Update
+    queryClient.setQueriesData({ queryKey: ['tasks'] }, (old: any) =>
       old ? old.map((t: any) => t.id === taskId ? { ...t, status: newStatus as TaskStatus } : t) : old
     );
 
     startTransition(async () => {
       try {
         const result = await apiPatch('/api/tasks', { action: 'updateStatus', taskId, status: newStatus });
-        if (result.success && result.data) {
+        if (result.success) {
           toast.success(result.message);
-          // Sync with server data: Invalidate queries to get absolute truth
-          queryClient.invalidateQueries({ queryKey: ['tasks'] });
-          queryClient.invalidateQueries({ queryKey: ['dashboardTasks'] });
         } else {
           toast.error(result.error || 'Failed to update status');
-          // Revert optimistic update by invalidating
-          queryClient.invalidateQueries({ queryKey: ['tasks'] });
-          queryClient.invalidateQueries({ queryKey: ['dashboardTasks'] });
         }
+        queryClient.invalidateQueries({ queryKey: ['tasks'] });
+        queryClient.invalidateQueries({ queryKey: ['dashboardTasks'] });
       } catch (err) {
         toast.error('An unexpected error occurred.');
         queryClient.invalidateQueries({ queryKey: ['tasks'] });
-        queryClient.invalidateQueries({ queryKey: ['dashboardTasks'] });
       }
     });
   };
@@ -380,153 +387,40 @@ export default function TasksPage() {
             </button>
           </div>
 
-          {canManageTasks && (
-            <>
-              <Button
-                variant={viewAll ? "secondary" : "outline"}
-                onClick={() => setViewAll(!viewAll)}
-                className="gap-2"
-              >
-                <Users className="w-4 h-4" />
-                {viewAll ? 'My Tasks' : 'All Tasks'}
-              </Button>
+          <Button
+            variant={viewAll ? "secondary" : "outline"}
+            onClick={() => setViewAll(!viewAll)}
+            className="gap-2"
+          >
+            <Users className="w-4 h-4" />
+            {viewAll ? 'My Tasks' : 'All Tasks'}
+          </Button>
 
-              <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
-                <DialogTrigger asChild>
-                  <Button className="bg-primary text-primary-foreground gap-2">
-                    <Plus className="w-4 h-4" /> Add Task
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-[500px]">
-                  <DialogHeader>
-                    <DialogTitle>Create New Task</DialogTitle>
-                  </DialogHeader>
-                  <form onSubmit={handleCreateTask} className="space-y-4 mt-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="title">Task Title</Label>
-                      <Input id="title" name="title" required placeholder="e.g. Update Documentation" />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="description">Description</Label>
-                      <Textarea id="description" name="description" placeholder="Add details..." />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="priority">Priority</Label>
-                        <Select name="priority" defaultValue="medium">
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select priority" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="low">Low</SelectItem>
-                            <SelectItem value="medium">Medium</SelectItem>
-                            <SelectItem value="high">High</SelectItem>
-                            <SelectItem value="critical">Critical</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="space-y-2 flex flex-col">
-                        <Label htmlFor="assigned_to">Assign To (Multiple allowed)</Label>
-                        <Popover open={openAssignee} onOpenChange={setOpenAssignee}>
-                          <PopoverTrigger asChild>
-                            <Button
-                              variant="outline"
-                              role="combobox"
-                              aria-expanded={openAssignee}
-                              className="w-full justify-between font-normal"
-                            >
-                              {selectedAssigneeIds.length > 0
-                                ? `${selectedAssigneeIds.length} employee(s) selected`
-                                : "Select employees..."}
-                              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-[300px] p-0" align="start">
-                            <Command>
-                              <CommandInput placeholder="Search employee..." />
-                              <CommandList>
-                                <CommandEmpty>No employee found.</CommandEmpty>
-                                <CommandGroup>
-                                  {employees.map((emp) => (
-                                    <CommandItem
-                                      key={emp.id}
-                                      value={emp.name || emp.email}
-                                      onSelect={() => toggleAssignee(emp.id)}
-                                    >
-                                      <div className={cn(
-                                        "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border border-primary",
-                                        selectedAssigneeIds.includes(emp.id)
-                                          ? "bg-primary text-primary-foreground"
-                                          : "opacity-50 [&_svg]:invisible"
-                                      )}>
-                                        <Check className="h-3 w-3" />
-                                      </div>
-                                      {emp.name || emp.email} ({emp.role})
-                                    </CommandItem>
-                                  ))}
-                                </CommandGroup>
-                              </CommandList>
-                            </Command>
-                          </PopoverContent>
-                        </Popover>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="start_day">Start Date</Label>
-                        <Input id="start_day" name="start_day" type="date" defaultValue={new Date().toISOString().split('T')[0]} required />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="end_day">End Date</Label>
-                        <Input id="end_day" name="end_day" type="date" defaultValue={new Date().toISOString().split('T')[0]} required />
-                      </div>
-                    </div>
-
-                    <DialogFooter className="mt-6">
-                      <Button type="button" variant="outline" onClick={() => setIsAddOpen(false)}>Cancel</Button>
-                      <Button type="submit" disabled={saving}>
-                        {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                        {saving ? 'Creating...' : 'Create Task'}
-                      </Button>
-                    </DialogFooter>
-                  </form>
-                </DialogContent>
-              </Dialog>
-            </>
-          )}
-
-          {/* Employee: Add My Task button */}
-          {!canManageTasks && (
-            <Dialog open={isSelfAddOpen} onOpenChange={setIsSelfAddOpen}>
+          {canManageTasks ? (
+            <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
               <DialogTrigger asChild>
                 <Button className="bg-primary text-primary-foreground gap-2">
-                  <Plus className="w-4 h-4" /> Add My Task
+                  <Plus className="w-4 h-4" /> Add Task
                 </Button>
               </DialogTrigger>
-              <DialogContent className="sm:max-w-[480px]">
+              <DialogContent className="sm:max-w-[500px]">
                 <DialogHeader>
-                  <DialogTitle>Add My Task</DialogTitle>
+                  <DialogTitle>Create New Task</DialogTitle>
                 </DialogHeader>
-                <form onSubmit={handleCreateSelfTask} className="space-y-4 mt-4">
+                <form onSubmit={handleCreateTask} className="space-y-4 mt-4">
                   <div className="space-y-2">
-                    <Label htmlFor="self-title">Task Title</Label>
-                    <Input id="self-title" name="title" required placeholder="e.g. Prepare weekly report" />
+                    <Label htmlFor="title">Task Title</Label>
+                    <Input id="title" name="title" required placeholder="e.g. Update Documentation" />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="self-description">Description</Label>
-                    <Textarea id="self-description" name="description" placeholder="Add details..." />
+                    <Label htmlFor="description">Description</Label>
+                    <Textarea id="description" name="description" placeholder="Add details..." />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="self-priority">Priority</Label>
+                      <Label htmlFor="priority">Priority</Label>
                       <Select name="priority" defaultValue="medium">
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select priority" />
-                        </SelectTrigger>
+                        <SelectTrigger><SelectValue placeholder="Select priority" /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="low">Low</SelectItem>
                           <SelectItem value="medium">Medium</SelectItem>
@@ -535,23 +429,70 @@ export default function TasksPage() {
                         </SelectContent>
                       </Select>
                     </div>
+                    <div className="space-y-2 flex flex-col">
+                      <Label>Assign To</Label>
+                      <Popover open={openAssignee} onOpenChange={setOpenAssignee}>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline" className="w-full justify-between font-normal">
+                            {selectedAssigneeIds.length > 0 ? `${selectedAssigneeIds.length} selected` : "Select employees..."}
+                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[300px] p-0" align="start">
+                          <Command>
+                            <CommandInput placeholder="Search employee..." />
+                            <CommandList>
+                              <CommandEmpty>No employee found.</CommandEmpty>
+                              <CommandGroup>
+                                {employees.map((emp) => (
+                                  <CommandItem key={emp.id} value={emp.name || emp.email} onSelect={() => toggleAssignee(emp.id)}>
+                                    <div className={cn("mr-2 flex h-4 w-4 items-center justify-center rounded-sm border border-primary", selectedAssigneeIds.includes(emp.id) ? "bg-primary text-primary-foreground" : "opacity-50 [&_svg]:invisible")}>
+                                      <Check className="h-3 w-3" />
+                                    </div>
+                                    {emp.name || emp.email}
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="self-start_day">Date</Label>
-                      <Input
-                        id="self-start_day"
-                        name="start_day"
-                        type="date"
-                        defaultValue={new Date().toISOString().split('T')[0]}
-                        required
-                      />
+                      <Label htmlFor="start_day">Start Date</Label>
+                      <Input id="start_day" name="start_day" type="date" defaultValue={new Date().toISOString().split('T')[0]} required />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="end_day">End Date</Label>
+                      <Input id="end_day" name="end_day" type="date" defaultValue={new Date().toISOString().split('T')[0]} required />
                     </div>
                   </div>
                   <DialogFooter className="mt-6">
+                    <Button type="button" variant="outline" onClick={() => setIsAddOpen(false)}>Cancel</Button>
+                    <Button type="submit" disabled={saving}>{saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : 'Create Task'}</Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
+          ) : (
+            <Dialog open={isSelfAddOpen} onOpenChange={setIsSelfAddOpen}>
+              <DialogTrigger asChild>
+                <Button className="bg-primary text-primary-foreground gap-2"><Plus className="w-4 h-4" /> Add My Task</Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[480px]">
+                <DialogHeader><DialogTitle>Add My Task</DialogTitle></DialogHeader>
+                <form onSubmit={handleCreateSelfTask} className="space-y-4 mt-4">
+                  <div className="space-y-2"><Label>Title</Label><Input name="title" required /></div>
+                  <div className="space-y-2"><Label>Description</Label><Textarea name="description" /></div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2"><Label>Priority</Label><Select name="priority" defaultValue="medium"><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="low">Low</SelectItem><SelectItem value="medium">Medium</SelectItem><SelectItem value="high">High</SelectItem></SelectContent></Select></div>
+                    <div className="space-y-2"><Label>Date</Label><Input name="start_day" type="date" required defaultValue={new Date().toISOString().split('T')[0]} /></div>
+                  </div>
+                  <DialogFooter className="mt-6">
                     <Button type="button" variant="outline" onClick={() => setIsSelfAddOpen(false)}>Cancel</Button>
-                    <Button type="submit" disabled={selfSaving}>
-                      {selfSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                      {selfSaving ? 'Saving...' : 'Add Task'}
-                    </Button>
+                    <Button type="submit" disabled={selfSaving}>{selfSaving ? 'Saving...' : 'Add Task'}</Button>
                   </DialogFooter>
                 </form>
               </DialogContent>
@@ -565,80 +506,40 @@ export default function TasksPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 flex-1">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                placeholder="Search by title..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9"
-              />
+              <Input placeholder="Search tasks..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9" />
             </div>
-
             <Select value={employeeFilter} onValueChange={setEmployeeFilter}>
-              <SelectTrigger>
-                <SelectValue placeholder="All Employees" />
-              </SelectTrigger>
+              <SelectTrigger><SelectValue placeholder="All Employees" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Employees</SelectItem>
-                {employees.map(emp => (
-                  <SelectItem key={emp.id} value={emp.id}>
-                    {emp.name || emp.email}
-                  </SelectItem>
-                ))}
+                {employees.map(emp => <SelectItem key={emp.id} value={emp.id}>{emp.name || emp.email}</SelectItem>)}
               </SelectContent>
             </Select>
-
-            {/* Date Range Filter */}
             <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1.5 flex-1">
-                <CalendarIcon className="w-4 h-4 text-muted-foreground shrink-0" />
-                <input
-                  type="date"
-                  value={dateRange.start}
-                  onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
-                  className="w-full px-2 py-1.5 rounded-md border border-input bg-background text-xs focus:outline-none focus:ring-2 focus:ring-ring"
-                />
-                <span className="text-muted-foreground text-xs">to</span>
-                <input
-                  type="date"
-                  value={dateRange.end}
-                  onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
-                  className="w-full px-2 py-1.5 rounded-md border border-input bg-background text-xs focus:outline-none focus:ring-2 focus:ring-ring"
-                />
-              </div>
+              <CalendarIcon className="w-4 h-4 text-muted-foreground shrink-0" />
+              <input type="date" value={dateRange.start} onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))} className="w-full px-2 py-1.5 rounded-md border border-input bg-background text-xs" />
+              <span className="text-muted-foreground text-xs">to</span>
+              <input type="date" value={dateRange.end} onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))} className="w-full px-2 py-1.5 rounded-md border border-input bg-background text-xs" />
             </div>
           </div>
         </div>
       )}
 
-      {/* Progress */}
       <div className="stat-card">
         <div className="flex items-center justify-between mb-3">
           <h2 className="font-semibold">Overall Progress</h2>
-          <span className="text-sm text-muted-foreground">
-            {completedCount}/{totalCount} tasks completed
-          </span>
+          <span className="text-sm text-muted-foreground">{completedCount}/{totalCount} tasks completed</span>
         </div>
         <Progress value={progress} className="h-2.5" />
       </div>
 
-      {/* Task List - Grouped by Date */}
       <div className="space-y-8">
         {loading ? (
           <div className="space-y-6">
             {Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="p-4 rounded-xl border border-border/50 bg-card space-y-3">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <Skeleton width="60%" height={18} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-                    <Skeleton width="80%" height={14} style={{ marginTop: 8 }} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-                  </div>
-                  <Skeleton width={100} height={28} borderRadius={8} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-                </div>
-                <div className="flex items-center gap-3">
-                  <Skeleton width={60} height={20} borderRadius={6} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-                  <Skeleton width={80} height={20} borderRadius={6} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-                  <Skeleton width={120} height={20} borderRadius={6} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-                </div>
+                <Skeleton width="60%" height={18} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+                <Skeleton width="100%" height={24} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
               </div>
             ))}
           </div>
@@ -648,96 +549,36 @@ export default function TasksPage() {
           sortedDates.map((dateStr) => (
             <div key={dateStr} className="space-y-4">
               <div className="flex items-center gap-4">
-                <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground whitespace-nowrap">
-                  {formatDateHeader(dateStr)}
-                </h2>
+                <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground whitespace-nowrap">{formatDateHeader(dateStr)}</h2>
                 <div className="h-px w-full bg-border/60"></div>
               </div>
-
               <div className="grid gap-3">
                 {groupedTasks[dateStr].map((task) => (
-                  <div
-                    key={task.id}
-                    className="flex flex-col sm:flex-row sm:items-center gap-4 p-4 rounded-xl border border-border/50 bg-card hover:shadow-lg hover:shadow-primary/5 transition-all group"
-                  >
+                  <div key={task.id} className="flex flex-col sm:flex-row sm:items-center gap-4 p-4 rounded-xl border border-border/50 bg-card hover:shadow-lg hover:shadow-primary/5 transition-all group">
                     <div className="flex-1">
                       <div className="flex items-start justify-between">
                         <div>
-                          <h3 className={`font-semibold text-base ${task.status === 'completed' ? 'line-through text-muted-foreground/60' : ''}`}>
-                            {task.title}
-                          </h3>
+                          <h3 className={`font-semibold text-base ${task.status === 'completed' ? 'line-through text-muted-foreground/60' : ''}`}>{task.title}</h3>
                           {task.description && <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{task.description}</p>}
                         </div>
-
                         <div className="w-36 shrink-0">
-                          <Select
-                            value={task.status}
-                            onValueChange={(val) => handleStatusChange(task.id, val)}
-                            disabled={isPending}
-                          >
-                            <SelectTrigger className={cn(
-                              "h-8 text-[11px] font-bold uppercase tracking-tight rounded-lg",
-                              task.status === 'completed' && "bg-success/10 text-success border-success/20",
-                              task.status === 'in_progress' && "bg-info/10 text-info border-info/20",
-                              task.status === 'pending' && "bg-muted text-muted-foreground border-border"
-                            )}>
+                          <Select value={task.status} onValueChange={(val) => handleStatusChange(task.id, val)} disabled={isPending}>
+                            <SelectTrigger className={cn("h-8 text-[11px] font-bold uppercase tracking-tight rounded-lg", task.status === 'completed' && "bg-success/10 text-success border-success/20", task.status === 'in_progress' && "bg-info/10 text-info border-info/20")}>
                               <SelectValue placeholder="Status" />
                             </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="pending">Pending</SelectItem>
-                              <SelectItem value="in_progress">In Progress</SelectItem>
-                              <SelectItem value="completed">Completed</SelectItem>
-                            </SelectContent>
+                            <SelectContent><SelectItem value="pending">Pending</SelectItem><SelectItem value="in_progress">In Progress</SelectItem><SelectItem value="completed">Completed</SelectItem></SelectContent>
                           </Select>
                         </div>
                       </div>
-
                       <div className="flex flex-wrap items-center gap-3 mt-4 text-[11px] text-muted-foreground font-medium">
-                        {viewAll && task.assignee_name && (
-                          <span className="flex items-center gap-1.5 bg-secondary px-2 py-0.5 rounded-md text-secondary-foreground font-bold">
-                            <Users className="w-3 h-3" /> {task.assignee_name.toUpperCase()}
-                          </span>
-                        )}
-                        <span className={`px-2 py-0.5 rounded-md uppercase font-bold tracking-wider ${priorityColors[task.priority]}`}>
-                          {task.priority}
-                        </span>
-                        <div className="flex items-center gap-1.5 bg-muted/50 px-2 py-0.5 rounded-md">
-                          <Clock className="w-3 h-3" />
-                          <span>{new Date(task.start_day).toLocaleDateString()}</span>
-                          {task.start_day !== task.end_day && (
-                            <>
-                              <span>-</span>
-                              <span>{new Date(task.end_day).toLocaleDateString()}</span>
-                            </>
-                          )}
-                        </div>
+                        {viewAll && task.assignee_name && <span className="bg-secondary px-2 py-0.5 rounded-md font-bold text-secondary-foreground"><Users className="w-3 h-3 inline mr-1" />{task.assignee_name.toUpperCase()}</span>}
+                        <span className={cn("px-2 py-0.5 rounded-md uppercase font-bold tracking-wider", priorityColors[task.priority])}>{task.priority}</span>
+                        <div className="flex items-center gap-1.5 bg-muted/50 px-2 py-0.5 rounded-md"><Clock className="w-3 h-3" />{new Date(task.start_day).toLocaleDateString()}</div>
                       </div>
                     </div>
-
-                    <div className="flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                      {(canManageTasks || task.assignee_id === user?.id) && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 rounded-lg"
-                          onClick={() => handleEditTaskClick(task)}
-                        >
-                          <Edit2 className="w-3.5 h-3.5 text-muted-foreground" />
-                        </Button>
-                      )}
-                      {user?.role === 'admin' && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 rounded-lg hover:bg-destructive/10 hover:text-destructive text-muted-foreground"
-                          onClick={() => {
-                            setDeletingTaskId(task.id);
-                            setIsDeleteDialogOpen(true);
-                          }}
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
-                      )}
+                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      {(canManageTasks || task.assignee_id === user?.id) && <Button variant="ghost" size="icon" onClick={() => handleEditTaskClick(task)} className="h-8 w-8"><Edit2 className="w-3.5 h-3.5" /></Button>}
+                      {user?.role === 'admin' && <Button variant="ghost" size="icon" onClick={() => { setDeletingTaskId(task.id); setIsDeleteDialogOpen(true); }} className="h-8 w-8 hover:text-destructive"><Trash2 className="w-3.5 h-3.5" /></Button>}
                     </div>
                   </div>
                 ))}
@@ -746,133 +587,50 @@ export default function TasksPage() {
           ))
         )}
 
-        {/* See More Button */}
-        {!loading && filtered.length > visibleTasksCount && (
-          <div className="flex justify-center pt-6">
-            <Button variant="outline" onClick={() => setVisibleTasksCount(filtered.length)}>
-              See More
-            </Button>
+        {!loading && totalPages > 1 && (
+          <div className="flex items-center justify-between p-4 bg-muted/20 rounded-2xl border border-border/40 mt-8">
+            <p className="text-sm text-muted-foreground">Showing {(currentPage - 1) * RECORDS_PER_PAGE + 1}–{Math.min(currentPage * RECORDS_PER_PAGE, filtered.length)} of {filtered.length} tasks</p>
+            <div className="flex items-center gap-1">
+              <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}><ChevronLeft className="w-4 h-4" /></Button>
+              {Array.from({ length: totalPages }).map((_, i) => (
+                <Button key={i} variant={currentPage === i + 1 ? "default" : "outline"} className="h-8 w-8 text-xs" onClick={() => setCurrentPage(i + 1)}>{i + 1}</Button>
+              ))}
+              <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}><ChevronRight className="w-4 h-4" /></Button>
+            </div>
           </div>
         )}
       </div>
 
-      {/* Edit Task Dialog */}
+      {/* Edit Dialog */}
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
         <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle>Edit Task</DialogTitle>
-          </DialogHeader>
+          <DialogHeader><DialogTitle>Edit Task</DialogTitle></DialogHeader>
           <form onSubmit={handleUpdateTask} className="space-y-4 mt-4">
-            <div className="space-y-2">
-              <Label htmlFor="edit-title">Task Title</Label>
-              <Input id="edit-title" name="title" required defaultValue={editingTask?.title || ''} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-description">Description</Label>
-              <Textarea id="edit-description" name="description" defaultValue={editingTask?.description || ''} />
+            <div className="space-y-2"><Label>Title</Label><Input name="title" defaultValue={editingTask?.title} required /></div>
+            <div className="space-y-2"><Label>Description</Label><Textarea name="description" defaultValue={editingTask?.description} /></div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2"><Label>Priority</Label><Select name="priority" defaultValue={editingTask?.priority}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="low">Low</SelectItem><SelectItem value="medium">Medium</SelectItem><SelectItem value="high">High</SelectItem></SelectContent></Select></div>
+              <div className="space-y-2"><Label>Start Date</Label><Input name="start_day" type="date" defaultValue={editingTask?.start_day} required /></div>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="edit-priority">Priority</Label>
-                <Select name="priority" defaultValue={editingTask?.priority || 'medium'}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select priority" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="low">Low</SelectItem>
-                    <SelectItem value="medium">Medium</SelectItem>
-                    <SelectItem value="high">High</SelectItem>
-                    <SelectItem value="critical">Critical</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              {canManageTasks && (
-                <div className="space-y-2 flex flex-col">
-                  <Label htmlFor="edit_assigned_to">Assignee (Single for Edit)</Label>
-                  <Popover open={openAssignee} onOpenChange={setOpenAssignee}>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        role="combobox"
-                        aria-expanded={openAssignee}
-                        className="w-full justify-between font-normal"
-                      >
-                        {selectedAssigneeIds.length > 0
-                          ? employees.find(e => e.id === selectedAssigneeIds[0])?.name || "Employee Selected"
-                          : "Select employee..."}
-                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-[300px] p-0" align="start">
-                      <Command>
-                        <CommandInput placeholder="Search employee..." />
-                        <CommandList>
-                          <CommandEmpty>No employee found.</CommandEmpty>
-                          <CommandGroup>
-                            {employees.map((emp) => (
-                              <CommandItem
-                                key={emp.id}
-                                value={emp.name || emp.email}
-                                onSelect={() => {
-                                  setSelectedAssigneeIds([emp.id]);
-                                  setOpenAssignee(false);
-                                }}
-                              >
-                                <div className={cn(
-                                  "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border border-primary",
-                                  selectedAssigneeIds.includes(emp.id)
-                                    ? "bg-primary text-primary-foreground"
-                                    : "opacity-50 [&_svg]:invisible"
-                                )}>
-                                  <Check className="h-3 w-3" />
-                                </div>
-                                {emp.name || emp.email} ({emp.role})
-                              </CommandItem>
-                            ))}
-                          </CommandGroup>
-                        </CommandList>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
-                </div>
-              )}
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="edit-start_day">Start Date</Label>
-                <Input id="edit-start_day" name="start_day" type="date" defaultValue={editingTask?.start_day || ''} required />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-end_day">End Date</Label>
-                <Input id="edit-end_day" name="end_day" type="date" defaultValue={editingTask?.end_day || ''} required />
-              </div>
+              <div className="space-y-2"><Label>End Date</Label><Input name="end_day" type="date" defaultValue={editingTask?.end_day} required /></div>
             </div>
             <DialogFooter className="mt-6">
               <Button type="button" variant="outline" onClick={() => setIsEditOpen(false)}>Cancel</Button>
-              <Button type="submit" disabled={saving}>
-                {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                {saving ? 'Saving...' : 'Save Changes'}
-              </Button>
+              <Button type="submit" disabled={saving}>Save Changes</Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation Dialog */}
+      {/* Delete Confirmation */}
       <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-        <DialogContent className="sm:max-w-[400px]">
-          <DialogHeader>
-            <DialogTitle>Delete Task</DialogTitle>
-          </DialogHeader>
-          <div className="py-4">
-            <p className="text-sm text-muted-foreground">Are you sure you want to delete this task? This action cannot be undone.</p>
-          </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setIsDeleteDialogOpen(false)}>Cancel</Button>
-            <Button variant="destructive" onClick={confirmDeleteTask} disabled={saving}>
-              {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              {saving ? 'Deleting...' : 'Delete Task'}
-            </Button>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader><DialogTitle>Delete Task</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">Are you sure you want to delete this task?</p>
+          <DialogFooter className="mt-6">
+            <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)}>Cancel</Button>
+            <Button variant="destructive" onClick={confirmDeleteTask} disabled={saving}>Delete Task</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -6,7 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Textarea } from '../components/ui/textarea';
-import { Calendar, Send, CheckCircle2, XCircle, Clock, Search, User, AlertTriangle, Trash, Loader2 } from 'lucide-react';
+import { Calendar, Send, CheckCircle2, XCircle, Clock, Search, User, AlertTriangle, Trash, Loader2, Mail } from 'lucide-react';
 import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/apiClient';
 import { toast } from 'react-hot-toast';
 import Skeleton from 'react-loading-skeleton';
@@ -384,20 +384,18 @@ export default function LeavePage() {
                               <StatusIcon className="w-3 h-3 mr-1" />
                               {req.status}
                             </span>
-                            {isAdmin && <span className="text-xs text-muted-foreground bg-secondary px-2 py-0.5 rounded">by {req.user_name}</span>}
                             {isAdmin && overlappingKeys.has(`${req.start_date}__${req.end_date || req.start_date}`) && (
                               <span className="flex items-center gap-1 text-xs font-medium text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded">
                                 <AlertTriangle className="w-3 h-3" /> Overlapping
                               </span>
                             )}
                             {req.remaining_leaves != null && (
-                              <span className={`text-xs font-medium px-2 py-0.5 rounded ${
-                                req.remaining_leaves <= 0 
-                                  ? 'bg-destructive/10 text-destructive' 
-                                  : req.remaining_leaves <= 3 
-                                    ? 'bg-warning/10 text-warning' 
-                                    : 'bg-primary/10 text-primary'
-                              }`}>
+                              <span className={`text-xs font-medium px-2 py-0.5 rounded ${req.remaining_leaves <= 0
+                                ? 'bg-destructive/10 text-destructive'
+                                : req.remaining_leaves <= 3
+                                  ? 'bg-warning/10 text-warning'
+                                  : 'bg-primary/10 text-primary'
+                                }`}>
                                 {req.remaining_leaves}/{req.total_leaves ?? '?'} leaves left
                               </span>
                             )}
@@ -411,8 +409,9 @@ export default function LeavePage() {
                           )}
                         </div>
                         <p className="text-sm">{req.reason}</p>
+                        {isAdmin && <span className="text-xs text-muted-foreground flex items-center gap-1"><User className="w-3 h-3" />{req.user_name}</span>}
                         <p className='text-xs text-muted-foreground flex items-center gap-1'>
-                          <User className="w-3 h-3" />
+                          <Mail className="w-3 h-3" />
                           {req.user_email}
                         </p>
                         <p className="text-xs text-muted-foreground flex items-center gap-1">
@@ -427,7 +426,8 @@ export default function LeavePage() {
                           })()}
                         </p>
                         {req.created_at && (
-                          <p className="text-xs text-muted-foreground">
+                          <p className="text-xs text-muted-foreground flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
                             Requested on{' '}
                             {new Date(req.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                             {' at '}

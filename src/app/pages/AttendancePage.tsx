@@ -378,41 +378,46 @@ function AttendanceTable({
   );
 }
 
+const RECORDS_PER_PAGE = 10;
+
 // ─── My Attendance (Employee View) ────────────────────────────────────────────
 
 function MyAttendanceView() {
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
-  const [viewAll, setViewAll] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const { data: recordsData, isLoading: loading } = useQuery({
-    queryKey: ['myAttendance', month, year, viewAll],
-    queryFn: () => {
-      if (!viewAll) return apiGet('/api/attendance?type=my&limit=15');
-      return apiGet(`/api/attendance?type=my&month=${month}&year=${year}`);
-    },
-    staleTime: viewAll ? 60000 : 0, // Fresh data for recent, 1 min for month
+    queryKey: ['myAttendance', month, year],
+    queryFn: () => apiGet(`/api/attendance?type=my&month=${month}&year=${year}`),
   });
   
   const records: AttendanceRecord[] = Array.isArray(recordsData) ? recordsData : [];
+
+  // Pagination logic
+  const totalPages = Math.ceil(records.length / RECORDS_PER_PAGE);
+  const paginatedRecords = records.slice(
+    (currentPage - 1) * RECORDS_PER_PAGE,
+    currentPage * RECORDS_PER_PAGE
+  );
+
+  // Reset to page 1 when month/year changes
+  const handleMonthChange = (m: number, y: number) => {
+    setMonth(m);
+    setYear(y);
+    setCurrentPage(1);
+  };
 
   return (
     <div className="space-y-5">
       {/* Header row */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-        {viewAll ? (
-          <MonthPicker month={month} year={year} onChange={(m, y) => { setMonth(m); setYear(y); }} />
-        ) : (
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-secondary/60 text-sm font-medium">
-            <Clock className="w-4 h-4 text-primary" />
-            Recent 15 Records
-          </div>
-        )}
+        <MonthPicker month={month} year={year} onChange={handleMonthChange} />
         <div className="flex gap-2">
           {records.length > 0 && (
             <button
-              onClick={() => exportToCSV(records, `my-attendance-${viewAll ? `${MONTH_NAMES[month - 1]}-${year}` : 'recent'}`)}
+              onClick={() => exportToCSV(records, `my-attendance-${MONTH_NAMES[month - 1]}-${year}`)}
               className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/80 transition-colors text-sm font-medium"
             >
               <Download className="w-4 h-4" /> Export CSV
@@ -440,17 +445,43 @@ function MyAttendanceView() {
 
       {/* Table */}
       <div className="stat-card !p-0 overflow-hidden">
-        <AttendanceTable records={records} showEmployee={false} loading={loading} />
+        <AttendanceTable records={paginatedRecords} showEmployee={false} loading={loading} />
         
-        {!viewAll && !loading && records.length >= 15 && (
-          <div className="p-4 border-t border-border/40 bg-muted/20 flex justify-center">
-            <button
-              onClick={() => setViewAll(true)}
-              className="flex items-center gap-2 px-6 py-2 rounded-full bg-background border border-border hover:border-primary hover:text-primary transition-all text-sm font-medium shadow-sm"
-            >
-              See More (Full Month)
-              <ChevronDown className="w-4 h-4" />
-            </button>
+        {/* Pagination Controls */}
+        {!loading && totalPages > 1 && (
+          <div className="p-4 border-t border-border/40 bg-muted/20 flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">
+              Showing <span className="font-medium text-foreground">{(currentPage - 1) * RECORDS_PER_PAGE + 1}–{Math.min(currentPage * RECORDS_PER_PAGE, records.length)}</span> of <span className="font-medium text-foreground">{records.length}</span> records
+            </p>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="p-1.5 rounded-md hover:bg-background transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              {Array.from({ length: totalPages }).map((_, i) => (
+                <button
+                  key={i}
+                  onClick={() => setCurrentPage(i + 1)}
+                  className={`min-w-[32px] h-8 rounded-md text-xs font-medium transition-all ${
+                    currentPage === i + 1
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'hover:bg-background text-muted-foreground'
+                  }`}
+                >
+                  {i + 1}
+                </button>
+              ))}
+              <button
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="p-1.5 rounded-md hover:bg-background transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -466,6 +497,7 @@ function AllEmployeesView() {
   const [year, setYear] = useState(now.getFullYear());
   const [selectedEmployee, setSelectedEmployee] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
 
   const { data: employeesData, isLoading: empLoading } = useQuery({
     queryKey: ['employeesFilterList'],
@@ -500,6 +532,31 @@ function AllEmployeesView() {
     )
     : records;
 
+  // Pagination logic
+  const totalPages = Math.ceil(filteredRecords.length / RECORDS_PER_PAGE);
+  const paginatedRecords = filteredRecords.slice(
+    (currentPage - 1) * RECORDS_PER_PAGE,
+    currentPage * RECORDS_PER_PAGE
+  );
+
+  // Reset to page 1 functions
+  const handleEmployeeChange = (id: string) => {
+    setSelectedEmployee(id);
+    setSearchQuery('');
+    setCurrentPage(1);
+  };
+
+  const handleMonthChange = (m: number, y: number) => {
+    setMonth(m);
+    setYear(y);
+    setCurrentPage(1);
+  };
+
+  const handleSearchChange = (val: string) => {
+    setSearchQuery(val);
+    setCurrentPage(1);
+  };
+
   return (
     <div className="space-y-5">
       {/* Filter bar – row 1: dropdown + month + export */}
@@ -510,7 +567,7 @@ function AllEmployeesView() {
             <Users className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
             <select
               value={selectedEmployee}
-              onChange={e => { setSelectedEmployee(e.target.value); setSearchQuery(''); }}
+              onChange={e => handleEmployeeChange(e.target.value)}
               disabled={empLoading}
               className="pl-9 pr-8 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring appearance-none min-w-[200px] disabled:opacity-60"
             >
@@ -526,7 +583,7 @@ function AllEmployeesView() {
 
           {/* Month picker - only show when specific employee is selected */}
           {selectedEmployee !== 'all' && (
-            <MonthPicker month={month} year={year} onChange={(m, y) => { setMonth(m); setYear(y); }} />
+            <MonthPicker month={month} year={year} onChange={handleMonthChange} />
           )}
           
           {selectedEmployee === 'all' && (
@@ -555,13 +612,13 @@ function AllEmployeesView() {
           <input
             type="text"
             value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
+            onChange={e => handleSearchChange(e.target.value)}
             placeholder="Search by employee name, email or ID…"
             className="w-full pl-9 pr-9 py-2.5 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring transition"
           />
           {searchQuery && (
             <button
-              onClick={() => setSearchQuery('')}
+              onClick={() => handleSearchChange('')}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
               aria-label="Clear search"
             >
@@ -598,7 +655,45 @@ function AllEmployeesView() {
 
       {/* Table */}
       <div className="stat-card !p-0 overflow-hidden">
-        <AttendanceTable records={filteredRecords} showEmployee={selectedEmployee === 'all'} loading={loading} />
+        <AttendanceTable records={paginatedRecords} showEmployee={selectedEmployee === 'all'} loading={loading} />
+
+        {/* Pagination Controls */}
+        {!loading && totalPages > 1 && (
+          <div className="p-4 border-t border-border/40 bg-muted/20 flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">
+              Showing <span className="font-medium text-foreground">{(currentPage - 1) * RECORDS_PER_PAGE + 1}–{Math.min(currentPage * RECORDS_PER_PAGE, filteredRecords.length)}</span> of <span className="font-medium text-foreground">{filteredRecords.length}</span> records
+            </p>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="p-1.5 rounded-md hover:bg-background transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              {Array.from({ length: totalPages }).map((_, i) => (
+                <button
+                  key={i}
+                  onClick={() => setCurrentPage(i + 1)}
+                  className={`min-w-[32px] h-8 rounded-md text-xs font-medium transition-all ${
+                    currentPage === i + 1
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'hover:bg-background text-muted-foreground'
+                  }`}
+                >
+                  {i + 1}
+                </button>
+              ))}
+              <button
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="p-1.5 rounded-md hover:bg-background transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
