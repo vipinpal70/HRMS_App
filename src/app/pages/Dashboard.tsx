@@ -55,11 +55,42 @@ interface AttendanceRecord {
   employee_designation?: string;
 }
 
+// 1. Independent Timer Component to prevent full Dashboard re-renders
+function CheckInTimer({ checkInTime }: { checkInTime: Date | null }) {
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (checkInTime) {
+      setElapsed(Math.floor((Date.now() - checkInTime.getTime()) / 1000));
+      interval = setInterval(() => {
+        setElapsed(Math.floor((Date.now() - checkInTime.getTime()) / 1000));
+      }, 1000);
+    } else {
+      setElapsed(0);
+    }
+    return () => clearInterval(interval);
+  }, [checkInTime]);
+
+  const formatTime = (seconds: number) => {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
+
+  return (
+    <div className="font-mono text-5xl md:text-4xl font-bold tracking-wider text-primary">
+      {formatTime(elapsed || 0)}
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
-  const [elapsed, setElapsed] = useState(0);
+  // 2. Remove elapsed from main state
   const [ipValid, setIpValid] = useState(true);
   const [locationValid, setLocationValid] = useState(true);
   const [calendarDate, setCalendarDate] = useState<Date | undefined>(new Date());
@@ -103,8 +134,6 @@ export default function Dashboard() {
     queryFn: () => apiGet(`/api/calendar?type=holidays&year=${currentYear}`),
   });
 
-  const initialLoading = loadingToday || loadingSettings || loadingHistory || loadingTasks || loadingWorkType || loadingQuote || loadingYearData;
-
   const officeHours = useMemo(() => {
     if (!settingsData) return { start: '09:00', end: '19:00' };
     return {
@@ -114,10 +143,10 @@ export default function Dashboard() {
   }, [settingsData]);
 
   const effectiveWorkType = (workTypeData as any) || 'office';
-  const records = Array.isArray(historyData) ? (historyData as unknown as AttendanceRecord[]) : [];
-  const tasks: any[] = Array.isArray(tasksData) ? (tasksData as any[]) : [];
+  const records = useMemo(() => Array.isArray(historyData) ? (historyData as unknown as AttendanceRecord[]) : [], [historyData]);
+  const tasks: any[] = useMemo(() => Array.isArray(tasksData) ? (tasksData as any[]) : [], [tasksData]);
   
-  const holidays: { date: Date; label: string; type: 'holiday' | 'event' }[] = useMemo(() => {
+  const holidays = useMemo(() => {
     if (!Array.isArray(yearData)) return [];
     return (yearData as any[]).map((h: any) => ({
       date: new Date(h.date),
@@ -145,7 +174,6 @@ export default function Dashboard() {
     }
   }, [todayData]);
 
-  // Check office hours every minute
   useEffect(() => {
     function checkHours() {
       const now = new Date();
@@ -161,25 +189,8 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, [officeHours]);
 
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (checkedIn && checkInTime) {
-      setElapsed(Math.floor((Date.now() - checkInTime.getTime()) / 1000));
-      interval = setInterval(() => {
-        setElapsed(Math.floor((Date.now() - checkInTime.getTime()) / 1000));
-      }, 1000);
-    } else {
-      setElapsed(0);
-    }
-    return () => clearInterval(interval);
-  }, [checkedIn, checkInTime]);
-
-
-  // Handle Check In
   const handleCheckIn = async () => {
     setLoading(true);
-
-    // Get Location
     if (!navigator.geolocation) {
       toast.error('Geolocation is not supported by your browser');
       setLoading(false);
@@ -189,10 +200,8 @@ export default function Dashboard() {
     navigator.geolocation.getCurrentPosition(
       async (position) => {
         const { latitude, longitude } = position.coords;
-
         try {
           const result = await apiPost('/api/attendance', { action: 'checkIn', latitude, longitude });
-
           if (result.error) {
             toast.error(result.error);
           } else {
@@ -218,13 +227,9 @@ export default function Dashboard() {
     );
   };
 
-  // Handle Check Out
   const handleCheckOut = async () => {
     setLoading(true);
-
-    // Get Location (optional for checkout but good for audit)
     if (!navigator.geolocation) {
-      // Fallback if no geolocation
       await performCheckOut(0, 0);
       return;
     }
@@ -235,17 +240,14 @@ export default function Dashboard() {
         await performCheckOut(latitude, longitude);
       },
       async (error) => {
-        // Allow checkout even if location fails
         await performCheckOut(0, 0);
       }
     );
   };
 
-  // Perform Check Out
   const performCheckOut = async (lat: number, lng: number) => {
     try {
       const result = await apiPost('/api/attendance', { action: 'checkOut', latitude: lat, longitude: lng });
-
       if (result.error) {
         toast.error(result.error);
       } else {
@@ -262,13 +264,6 @@ export default function Dashboard() {
     }
   }
 
-  const formatTime = (seconds: number) => {
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    const s = seconds % 60;
-    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-  };
-
   const formatOfficeTime = (time: string) => {
     const [h, m] = time.split(':').map(Number);
     const period = h >= 12 ? 'PM' : 'AM';
@@ -283,30 +278,25 @@ export default function Dashboard() {
     day: 'numeric',
   });
 
+  const officeDone = todayData?.work_type === 'office' && !!todayData?.check_in_1 && !!todayData?.check_out_1 && !checkedIn;
 
-  // Derived: office work type employee who has completed their one allowed session
-  const officeDone =
-    todayData?.work_type === 'office' &&
-    !!todayData?.check_in_1 &&
-    !!todayData?.check_out_1 &&
-    !checkedIn;
+  // 3. Memoize stats
+  const stats = useMemo(() => {
+    const present = records.filter(r => (r as any).check_in_1 != null).length;
+    const totalMin = records.reduce((acc, r) => acc + (r.total_minutes ?? 0), 0);
+    const tasksDone = tasks.filter(t => t.status === 'completed').length;
+    const totalWorkDays = records.length;
+    return [
+      { label: 'Present Days', value: present.toString(), icon: CalendarCheck, color: 'text-success' },
+      { label: 'Tasks Done', value: tasksDone.toString(), icon: ListTodo, color: 'text-info' },
+      { label: 'Avg Hours', value: records.length > 0 ? `${(totalMin / (records.length * 60)).toFixed(1)}h` : '0h', icon: Timer, color: 'text-accent' },
+      { label: 'Work Days', value: totalWorkDays.toString(), icon: CalendarCheck, color: 'text-primary' },
+    ];
+  }, [records, tasks]);
 
-  // "Present" = total check-ins (any record that has a check_in_1 time)
-  const present = records.filter(r => (r as any).check_in_1 != null).length;
-  const totalMin = records.reduce((acc, r) => acc + (r.total_minutes ?? 0), 0);
-  const tasksDone = tasks.filter(t => t.status === 'completed').length;
-  const totalWorkDays = records.length;
-
-  const stats = [
-    { label: 'Present Days', value: present.toString(), icon: CalendarCheck, color: 'text-success' },
-    { label: 'Tasks Done', value: tasksDone.toString(), icon: ListTodo, color: 'text-info' },
-    { label: 'Avg Hours', value: records.length > 0 ? `${(totalMin / (records.length * 60)).toFixed(1)}h` : '0h', icon: Timer, color: 'text-accent' },
-    { label: 'Work Days', value: totalWorkDays.toString(), icon: CalendarCheck, color: 'text-primary' },
-  ];
-
-  const todayStr = new Date().toISOString().split('T')[0];
-  const todayTasks = tasks.filter(t => t.start_day === todayStr);
-  const pendingTasks = tasks.filter(t => t.status !== 'completed' && t.start_day !== todayStr);
+  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const todayTasks = useMemo(() => tasks.filter(t => t.start_day === todayStr), [tasks, todayStr]);
+  const pendingTasks = useMemo(() => tasks.filter(t => t.status !== 'completed' && t.start_day !== todayStr), [tasks, todayStr]);
 
   const statusColors = {
     completed: 'bg-success/10 text-success',
@@ -314,90 +304,24 @@ export default function Dashboard() {
     pending: 'bg-muted text-muted-foreground',
   };
 
-  const now = new Date();
-  const upcomingHolidays = holidays
-    .filter((h) => {
-      const isUpcoming = h.date >= now;
-      if (!isUpcoming) return false;
-      if (h.type === 'event') {
-        return h.date.getMonth() === now.getMonth() && h.date.getFullYear() === now.getFullYear();
-      }
-      return h.type === 'holiday';
-    })
-    .sort((a, b) => a.date.getTime() - b.date.getTime());
+  const holidayDates = useMemo(() => holidays.map((h) => h.date), [holidays]);
+  const eventDates = useMemo(() => holidays.filter((h) => h.type === 'event').map((h) => h.date), [holidays]);
 
-  const holidayDates = holidays.map((h) => h.date);
-  const eventDates = holidays.filter((h) => h.type === 'event').map((h) => h.date);
+  const upcomingHolidays = useMemo(() => {
+    const now = new Date();
+    return holidays
+      .filter((h) => {
+        const isUpcoming = h.date >= now;
+        if (!isUpcoming) return false;
+        if (h.type === 'event') {
+          return h.date.getMonth() === now.getMonth() && h.date.getFullYear() === now.getFullYear();
+        }
+        return h.type === 'holiday';
+      })
+      .sort((a, b) => a.date.getTime() - b.date.getTime());
+  }, [holidays]);
 
-  // Debug user name
-  useEffect(() => {
-    if (user) {
-      console.log('Dashboard User:', user);
-    }
-  }, [user]);
-
-  if (initialLoading) {
-    return (
-      <div className="space-y-6 animate-fade-up">
-        {/* Header skeleton */}
-        <div>
-          <Skeleton width={280} height={28} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-          <Skeleton width={180} height={14} style={{ marginTop: 6 }} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-          <Skeleton width="100%" height={38} borderRadius={8} style={{ marginTop: 8 }} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-        </div>
-
-        {/* Check-in card skeleton */}
-        <div className="stat-card flex flex-col sm:flex-row items-start sm:items-center gap-5">
-          <div className="flex-1 space-y-3">
-            <div className="flex items-center gap-3">
-              <Skeleton circle width={12} height={12} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-              <Skeleton width={140} height={20} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-            </div>
-            <div className="flex gap-3">
-              <Skeleton width={60} height={14} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-              <Skeleton width={60} height={14} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-            </div>
-          </div>
-          <Skeleton width={120} height={40} borderRadius={8} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-        </div>
-
-        {/* Office hours bar skeleton */}
-        <Skeleton width="100%" height={40} borderRadius={8} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-
-        {/* Stats grid skeleton */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="stat-card">
-              <Skeleton circle width={20} height={20} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-              <Skeleton width={60} height={28} style={{ marginTop: 8 }} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-              <Skeleton width={80} height={12} style={{ marginTop: 4 }} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-            </div>
-          ))}
-        </div>
-
-        {/* Calendar + Tasks skeleton */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="stat-card">
-            <Skeleton width={100} height={18} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-            <Skeleton width="100%" height={250} borderRadius={8} style={{ marginTop: 12 }} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-          </div>
-          <div className="stat-card space-y-3">
-            <Skeleton width={160} height={18} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-            {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="flex items-center gap-3 py-2">
-                <Skeleton circle width={32} height={32} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-                <div className="flex-1">
-                  <Skeleton width="70%" height={14} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-                  <Skeleton width="40%" height={12} style={{ marginTop: 4 }} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    )
-  }
-
+  // 4. Implement Progressive Loading
   return (
     <div className="space-y-6 animate-fade-up">
       {/* Header */}
@@ -406,124 +330,129 @@ export default function Dashboard() {
           Good {new Date().getHours() < 12 ? 'Morning' : new Date().getHours() < 17 ? 'Afternoon' : 'Evening'}, {user?.name || user?.email?.split('@')[0] || 'User'}
         </h1>
         <p className="text-muted-foreground text-sm mt-1">{today}</p>
-        <p className="text-sm italic mt-2 text-primary/80 bg-primary/10 p-2 rounded-lg">
-          {quote ? `"${quote.q}" — ${quote.a}` : 'Loading inspiration...'}
-        </p>
+        <div className="text-sm italic mt-2 text-primary/80 bg-primary/10 p-2 rounded-lg min-h-[40px] flex items-center">
+          {loadingQuote ? (
+            <Skeleton width="60%" height={16} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+          ) : (
+            quote ? `"${quote.q}" — ${quote.a}` : 'Loading inspiration...'
+          )}
+        </div>
       </div>
 
       {/* Check-in Card */}
       <div className="stat-card flex flex-col sm:flex-row items-center gap-5">
-        <div className="flex-1 space-y-3">
-          <div className="flex items-center justify-center md:justify-start gap-3">
-            <div
-              className={`w-3 h-3 rounded-full ${checkedIn ? 'bg-success pulse-dot' : 'bg-muted-foreground/30'
-                }`}
-            />
-            <span className="font-semibold text-lg">
-              {checkedIn ? 'Checked In' : 'Not Checked In'}
-            </span>
-          </div>
-
-          {checkedIn && (
-            <div className="font-mono text-5xl md:text-4xl font-bold tracking-wider text-primary">
-              {formatTime(elapsed)}
+        {loadingToday ? (
+          <div className="flex-1 space-y-3 w-full">
+            <div className="flex items-center gap-3">
+              <Skeleton circle width={12} height={12} />
+              <Skeleton width={140} height={20} />
             </div>
-          )}
-
-          {/* Validation Status */}
-          <div className="flex flex-wrap justify-center md:justify-start gap-3 text-sm">
-            <span className="flex items-center gap-1.5">
-              <Wifi className="w-4 h-4" />
-              IP:
-              {ipValid ? (
-                <CheckCircle2 className="w-4 h-4 text-success" />
-              ) : (
-                <XCircle className="w-4 h-4 text-destructive" />
-              )}
-            </span>
-            <span className="flex items-center gap-1.5">
-              <MapPin className="w-4 h-4" />
-              Location:
-              {locationValid ? (
-                <CheckCircle2 className="w-4 h-4 text-success" />
-              ) : (
-                <XCircle className="w-4 h-4 text-destructive" />
-              )}
-            </span>
-          </div>
-        </div>
-
-        {officeDone ? (
-          <div className="flex flex-col items-center gap-1">
-            <Button
-              size="lg"
-              className="bg-success hover:bg-success/90 text-success-foreground"
-              onClick={() => toast.error('You cannot check in again.')}
-            >
-              <CheckCircle2 className="w-4 h-4 mr-2" />
-              Check In
-            </Button>
+            <div className="flex gap-3">
+              <Skeleton width={100} height={40} />
+            </div>
           </div>
         ) : (
-          <Button
-            size="lg"
-            onClick={checkedIn ? handleCheckOut : handleCheckIn}
-            disabled={loading || (effectiveWorkType === 'office' && !isWithinHours) || effectiveWorkType === 'leave'}
-            title={
-              effectiveWorkType === 'leave'
-                ? 'You are on approved leave today.'
-                : (effectiveWorkType === 'office' && !isWithinHours)
-                  ? `Allowed only between ${formatOfficeTime(officeHours.start)} – ${formatOfficeTime(officeHours.end)}`
-                  : undefined
-            }
-            className={
-              (effectiveWorkType === 'office' && !isWithinHours) || effectiveWorkType === 'leave'
-                ? 'bg-muted text-muted-foreground cursor-not-allowed'
-                : checkedIn
-                  ? 'bg-destructive hover:bg-destructive/90 text-destructive-foreground'
-                  : 'bg-success hover:bg-success/90 text-success-foreground'
-            }
-          >
-            {loading ? (
-              <Loader2 className="w-4 h-4 animate-spin mr-2" />
-            ) : (
-              <Clock className="w-4 h-4 mr-2" />
-            )}
-            {checkedIn ? 'Check Out' : 'Check In'}
-          </Button>
+          <div className="flex-1 space-y-3">
+            <div className="flex items-center justify-center md:justify-start gap-3">
+              <div
+                className={`w-3 h-3 rounded-full ${checkedIn ? 'bg-success pulse-dot' : 'bg-muted-foreground/30'}`}
+              />
+              <span className="font-semibold text-lg">
+                {checkedIn ? 'Checked In' : 'Not Checked In'}
+              </span>
+            </div>
+
+            {checkedIn && <CheckInTimer checkInTime={checkInTime} />}
+
+            {/* Validation Status */}
+            <div className="flex flex-wrap justify-center md:justify-start gap-3 text-sm">
+              <span className="flex items-center gap-1.5">
+                <Wifi className="w-4 h-4" />
+                IP: {ipValid ? <CheckCircle2 className="w-4 h-4 text-success" /> : <XCircle className="w-4 h-4 text-destructive" />}
+              </span>
+              <span className="flex items-center gap-1.5">
+                <MapPin className="w-4 h-4" />
+                Location: {locationValid ? <CheckCircle2 className="w-4 h-4 text-success" /> : <XCircle className="w-4 h-4 text-destructive" />}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {!loadingToday && (
+          officeDone ? (
+            <div className="flex flex-col items-center gap-1">
+              <Button
+                size="lg"
+                className="bg-success hover:bg-success/90 text-success-foreground"
+                onClick={() => toast.error('You cannot check in again.')}
+              >
+                <CheckCircle2 className="w-4 h-4 mr-2" />
+                Check In
+              </Button>
+            </div>
+          ) : (
+            <Button
+              size="lg"
+              onClick={checkedIn ? handleCheckOut : handleCheckIn}
+              disabled={loading || loadingSettings || (effectiveWorkType === 'office' && !isWithinHours) || effectiveWorkType === 'leave'}
+              className={
+                (effectiveWorkType === 'office' && !isWithinHours) || effectiveWorkType === 'leave'
+                  ? 'bg-muted text-muted-foreground cursor-not-allowed'
+                  : checkedIn
+                    ? 'bg-destructive hover:bg-destructive/90 text-destructive-foreground'
+                    : 'bg-success hover:bg-success/90 text-success-foreground'
+              }
+            >
+              {loading ? (
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              ) : (
+                <Clock className="w-4 h-4 mr-2" />
+              )}
+              {checkedIn ? 'Check Out' : 'Check In'}
+            </Button>
+          )
         )}
       </div>
 
       {/* Office Hours Info */}
-      <div className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm ${isWithinHours
-        ? 'bg-success/10 text-success'
-        : 'bg-destructive/10 text-destructive'
-        }`}>
+      <div className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm ${loadingSettings ? 'bg-muted/50' : (isWithinHours ? 'bg-success/10 text-success' : 'bg-destructive/10 text-destructive')}`}>
         <Clock className="w-4 h-4" />
-        <span>
-          Office hours: <strong>{formatOfficeTime(officeHours.start)} – {formatOfficeTime(officeHours.end)}</strong>
-          {effectiveWorkType === 'leave' && ' — You are on approved leave today'}
-          {(!isWithinHours && effectiveWorkType === 'office') && ' — Check-in/out is currently unavailable'}
-          {(!isWithinHours && effectiveWorkType !== 'office' && effectiveWorkType !== 'leave') && ' — Check-in/out remains available for your approved work type'}
-        </span>
+        {loadingSettings ? (
+          <Skeleton width={300} height={14} />
+        ) : (
+          <span>
+            Office hours: <strong>{formatOfficeTime(officeHours.start)} – {formatOfficeTime(officeHours.end)}</strong>
+            {effectiveWorkType === 'leave' && ' — You are on approved leave today'}
+            {(!isWithinHours && effectiveWorkType === 'office') && ' — Check-in/out is currently unavailable'}
+          </span>
+        )}
       </div>
 
       {/* Stats Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {stats.map((stat) => (
-          <div key={stat.label} className="stat-card">
-            <div className="flex items-center justify-between mb-2">
-              <stat.icon className={`w-5 h-5 ${stat.color}`} />
+        {(loadingHistory || loadingTasks) ? (
+          Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="stat-card">
+              <Skeleton circle width={20} height={20} />
+              <Skeleton width={60} height={28} style={{ marginTop: 8 }} />
+              <Skeleton width={80} height={12} style={{ marginTop: 4 }} />
             </div>
-            <p className="text-2xl font-bold">{stat.value}</p>
-            <p className="text-xs text-muted-foreground mt-1">{stat.label}</p>
-          </div>
-        ))}
+          ))
+        ) : (
+          stats.map((stat) => (
+            <div key={stat.label} className="stat-card">
+              <div className="flex items-center justify-between mb-2">
+                <stat.icon className={`w-5 h-5 ${stat.color}`} />
+              </div>
+              <p className="text-2xl font-bold">{stat.value}</p>
+              <p className="text-xs text-muted-foreground mt-1">{stat.label}</p>
+            </div>
+          ))
+        )}
       </div>
 
-      {/* Calendar + Holidays & Tasks Row */}
+      {/* Calendar + Holidays Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Mini Calendar */}
         <div className="stat-card flex flex-col items-center">
           <h2 className="font-semibold text-lg mb-3 self-start">Calendar</h2>
           <Calendar
@@ -539,30 +468,43 @@ export default function Dashboard() {
           />
         </div>
 
-        {/* Upcoming Holidays & Events */}
         <div className="stat-card flex flex-col">
           <h2 className="font-semibold text-lg mb-4">Upcoming Holidays & Events</h2>
-          <div className="space-y-3 max-h-[350px] overflow-y-auto pr-2 custom-scrollbar">
-            {upcomingHolidays.map((h, i) => (
-              <div key={i} className="flex items-center gap-3 py-2.5 border-b border-border/50 last:border-0">
-                <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${holidayTypeStyles[h.type]}`}>
-                  {h.type === 'holiday' ? <CloudSun className="w-4 h-4" /> : <Star className="w-4 h-4" />}
+          {loadingYearData ? (
+            <div className="space-y-3">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-3 py-2">
+                  <Skeleton width={36} height={36} borderRadius={8} />
+                  <div className="flex-1">
+                    <Skeleton width="70%" height={14} />
+                    <Skeleton width="40%" height={12} style={{ marginTop: 4 }} />
+                  </div>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{h.label}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {h.date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
-                  </p>
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-3 max-h-[350px] overflow-y-auto pr-2 custom-scrollbar">
+              {upcomingHolidays.map((h, i) => (
+                <div key={i} className="flex items-center gap-3 py-2.5 border-b border-border/50 last:border-0">
+                  <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${holidayTypeStyles[h.type as keyof typeof holidayTypeStyles]}`}>
+                    {h.type === 'holiday' ? <CloudSun className="w-4 h-4" /> : <Star className="w-4 h-4" />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{h.label}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {h.date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                    </p>
+                  </div>
+                  <Badge variant="outline" className={`text-[10px] shrink-0 ${holidayTypeStyles[h.type as keyof typeof holidayTypeStyles]}`}>
+                    {h.type}
+                  </Badge>
                 </div>
-                <Badge variant="outline" className={`text-[10px] shrink-0 ${holidayTypeStyles[h.type]}`}>
-                  {h.type}
-                </Badge>
-              </div>
-            ))}
-            {upcomingHolidays.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-4">No upcoming holidays</p>
-            )}
-          </div>
+              ))}
+              {upcomingHolidays.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-4">No upcoming holidays</p>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -570,36 +512,34 @@ export default function Dashboard() {
       <div className="stat-card">
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-semibold text-lg">Today's Tasks</h2>
-          <Badge variant="secondary" className="text-xs">
-            {todayTasks.filter((t) => t.status === 'completed').length}/{todayTasks.length} done
-          </Badge>
+          {!loadingTasks && (
+            <Badge variant="secondary" className="text-xs">
+              {todayTasks.filter((t) => t.status === 'completed').length}/{todayTasks.length} done
+            </Badge>
+          )}
         </div>
-        {todayTasks.length === 0 ? (
+        {loadingTasks ? (
+          <div className="space-y-3">
+             <Skeleton count={3} height={40} className="rounded-lg" />
+          </div>
+        ) : todayTasks.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-4">No tasks assigned</p>
         ) : (
           <>
             <div className="space-y-3">
               {todayTasks.map((task, i) => (
                 <div key={i} className="flex items-center justify-between py-2 border-b border-border/50 last:border-0">
-                  <span
-                    className={`text-sm ${task.status === 'completed' ? 'line-through text-muted-foreground' : ''}`}
-                  >
-                    {task.title}
-                  </span>
-                  <span className={`badge-status ${statusColors[task.status as keyof typeof statusColors]}`}>
-                    {task.status.replace('_', ' ')}
-                  </span>
+                  <span className={`text-sm ${task.status === 'completed' ? 'line-through text-muted-foreground' : ''}`}>{task.title}</span>
+                  <span className={`badge-status ${statusColors[task.status as keyof typeof statusColors]}`}>{task.status.replace('_', ' ')}</span>
                 </div>
               ))}
-
-            </div><div className="mt-4">
+            </div>
+            <div className="mt-4">
               <div className="flex items-center justify-between text-xs text-muted-foreground mb-1.5">
                 <span>Progress</span>
                 <span>{Math.round((todayTasks.filter((t) => t.status === 'completed').length / todayTasks.length) * 100)}%</span>
               </div>
-              <Progress
-                value={(todayTasks.filter((t) => t.status === 'completed').length / todayTasks.length) * 100}
-                className="h-2" />
+              <Progress value={(todayTasks.filter((t) => t.status === 'completed').length / todayTasks.length) * 100} className="h-2" />
             </div>
           </>
         )}
@@ -607,23 +547,13 @@ export default function Dashboard() {
 
       {/* Pending Tasks */}
       <div className="stat-card">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <h2 className="font-semibold text-lg">Pending Tasks</h2>
-          </div>
-          {pendingTasks.length > 2 && (
-            <Link href="/tasks">
-              <Button variant="ghost" size="sm" className="text-xs text-primary hover:text-primary/80 h-8">
-                See more
-              </Button>
-            </Link>
-          )}
-        </div>
-
-        {pendingTasks.length === 0 ? (
+        <h2 className="font-semibold text-lg mb-4">Pending Tasks</h2>
+        {loadingTasks ? (
+          <Skeleton count={2} height={60} className="rounded-lg mb-3" />
+        ) : pendingTasks.length === 0 ? (
           <div className="flex gap-2 items-center justify-center py-4 bg-muted/5 rounded-xl border border-dashed border-border/50">
             <CheckCircle2 className="w-6 h-6 text-success/30" />
-            <p className="text-sm text-muted-foreground">All caught up! No pending tasks.</p>
+            <p className="text-sm text-muted-foreground">All caught up!</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -631,30 +561,15 @@ export default function Dashboard() {
               <Link key={i} href="/tasks" className="block group">
                 <div className="flex items-center justify-between py-3 px-1 border-b border-border/50 last:border-0 group-hover:bg-muted/30 transition-colors rounded-lg">
                   <div className="flex flex-col gap-0.5">
-                    <span className="text-sm font-medium group-hover:text-primary transition-colors">
-                      {task.title}
-                    </span>
+                    <span className="text-sm font-medium group-hover:text-primary transition-colors">{task.title}</span>
                     <span className="text-[10px] text-muted-foreground flex items-center gap-1">
-                      <Timer className="w-3 h-3" />
-                      Due: {new Date(task.start_day).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                      <Timer className="w-3 h-3" /> Due: {new Date(task.start_day).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
                     </span>
                   </div>
-                  <span className={`badge-status ${statusColors[task.status as keyof typeof statusColors]}`}>
-                    {task.status.replace('_', ' ')}
-                  </span>
+                  <span className={`badge-status ${statusColors[task.status as keyof typeof statusColors]}`}>{task.status.replace('_', ' ')}</span>
                 </div>
               </Link>
             ))}
-
-            {pendingTasks.length <= 2 && (
-              <div className="pt-2 text-center">
-                <Link href="/tasks">
-                  <button className="w-full text-xs font-semibold h-9 rounded-xl bg-gray-300/20 border border-dashed text-muted-foreground hover:bg-primary hover:text-white">
-                    View all pending tasks
-                  </button>
-                </Link>
-              </div>
-            )}
           </div>
         )}
       </div>

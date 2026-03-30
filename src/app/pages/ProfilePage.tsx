@@ -23,6 +23,15 @@ interface Profile {
     document_submit?: boolean;
     document_received?: boolean;
 }
+interface ProfileFormData {
+    name: string;
+    designation: string;
+    phone: string;
+    total_leaves: number;
+    add_on_leaves: number;
+    dob: string;
+}
+
 import {
     User,
     Mail,
@@ -53,7 +62,7 @@ export default function ProfilePage() {
     const [isUploading, setIsUploading] = useState(false);
 
     // Form State
-    const [formData, setFormData] = useState({
+    const [formData, setFormData] = useState<ProfileFormData>({
         name: '',
         designation: '',
         phone: '',
@@ -67,7 +76,7 @@ export default function ProfilePage() {
         queryKey: ['profile', id],
         queryFn: () => apiGet(`/api/profile?id=${id}`),
         enabled: !!id,
-    });
+    }) as { data: Profile | undefined; isLoading: boolean };
 
     // Sync profile data to local state for editing
     useEffect(() => {
@@ -87,12 +96,12 @@ export default function ProfilePage() {
     const handleUpdate = async (e: React.FormEvent) => {
         e.preventDefault();
         startTransition(async () => {
-            const submitData = { ...formData };
+            const submitData: Partial<Profile> & { id: string } = { ...formData, id };
             if (!submitData.dob || submitData.dob.trim() === '') {
-                (submitData as any).dob = null;
+                submitData.dob = undefined;
             }
 
-            const result = await apiPatch('/api/profile', { id, ...submitData });
+            const result = await apiPatch('/api/profile', submitData);
             if (result.success) {
                 toast.success(result.message || 'Profile updated');
                 setIsEditing(false);
@@ -321,7 +330,7 @@ export default function ProfilePage() {
                                 <input
                                     type="text"
                                     value={formData.name}
-                                    onChange={e => setFormData({ ...formData, name: e.target.value })}
+                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, name: e.target.value })}
                                     disabled={!isEditing}
                                     placeholder="Employee Name"
                                     className="w-full bg-background border border-border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-primary/20 transition-all outline-none disabled:bg-muted/30 disabled:text-muted-foreground"
@@ -347,7 +356,7 @@ export default function ProfilePage() {
                                 <input
                                     type="text"
                                     value={formData.designation}
-                                    onChange={e => setFormData({ ...formData, designation: e.target.value })}
+                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, designation: e.target.value })}
                                     disabled={!isEditing}
                                     placeholder="e.g. Senior Developer"
                                     className="w-full bg-background border border-border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-primary/20 transition-all outline-none disabled:bg-muted/30 disabled:text-muted-foreground"
@@ -361,7 +370,7 @@ export default function ProfilePage() {
                                 <input
                                     type="text"
                                     value={formData.phone}
-                                    onChange={e => setFormData({ ...formData, phone: e.target.value })}
+                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, phone: e.target.value })}
                                     disabled={!isEditing}
                                     placeholder="+91 98765 43210"
                                     className="w-full bg-background border border-border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-primary/20 transition-all outline-none disabled:bg-muted/30 disabled:text-muted-foreground"
@@ -376,7 +385,7 @@ export default function ProfilePage() {
                                     <input
                                         type="date"
                                         value={formData.dob}
-                                        onChange={e => setFormData({ ...formData, dob: e.target.value })}
+                                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, dob: e.target.value })}
                                         className="w-full bg-background border border-border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-primary/20 transition-all outline-none"
                                     />
                                 ) : profile.dob ? (
@@ -407,7 +416,7 @@ export default function ProfilePage() {
                                         <input
                                             type="number"
                                             value={formData.total_leaves}
-                                            onChange={e => setFormData({ ...formData, total_leaves: parseInt(e.target.value) || 0 })}
+                                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, total_leaves: parseInt(e.target.value) || 0 })}
                                             disabled={!isEditing}
                                             className="w-full bg-background border border-border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-primary/20 transition-all outline-none disabled:bg-muted/30 disabled:text-muted-foreground"
                                         />
@@ -420,7 +429,7 @@ export default function ProfilePage() {
                                         <input
                                             type="number"
                                             value={formData.add_on_leaves}
-                                            onChange={e => setFormData({ ...formData, add_on_leaves: parseInt(e.target.value) || 0 })}
+                                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, add_on_leaves: parseInt(e.target.value) || 0 })}
                                             disabled={!isEditing}
                                             className="w-full bg-background border border-border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-primary/20 transition-all outline-none disabled:bg-muted/30 disabled:text-muted-foreground"
                                         />

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useTransition } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Clock, Users, ChevronLeft, ChevronRight, Download, CalendarDays,
@@ -90,8 +90,8 @@ function StatusBadge({ status }: { status: string }) {
 // ─── Excel Export (CSV) ───────────────────────────────────────────────────────
 
 function exportToCSV(records: AttendanceRecord[], fileName: string) {
+  if (records.length === 0) return;
   const isAdmin = 'employee_name' in (records[0] ?? {});
-  // Only include session-2 columns if any record in the set has hybrid/wfh
   const hasMultiSession = records.some(r => r.work_type === 'hybrid' || r.work_type === 'wfh');
 
   const headers = isAdmin
@@ -194,23 +194,24 @@ function MonthPicker({
 // ─── Stats Cards ──────────────────────────────────────────────────────────────
 
 function StatsRow({ records }: { records: AttendanceRecord[] }) {
-  // "Present" = total check-ins (any record that has a check_in_1 time)
-  const present = records.filter(r => r.check_in_1 != null).length;
-  // "Late" = only records explicitly marked as late
-  const late = records.filter(r => r.status === 'late').length;
-  const absent = records.filter(r => r.status === 'absent').length;
-  const wfh = records.filter(r => r.work_type === 'wfh' || r.status === 'wfh').length;
-  const totalMin = records.reduce((acc, r) => acc + (r.total_minutes ?? 0), 0);
-  const totalHrs = Math.floor(totalMin / 60);
-  const totalMins = totalMin % 60;
+  // 1. Memoized Stats Calculation
+  const stats = useMemo(() => {
+    const present = records.filter(r => r.check_in_1 != null).length;
+    const late = records.filter(r => r.status === 'late').length;
+    const absent = records.filter(r => r.status === 'absent').length;
+    const wfh = records.filter(r => r.work_type === 'wfh' || r.status === 'wfh').length;
+    const totalMin = records.reduce((acc, r) => acc + (r.total_minutes ?? 0), 0);
+    const totalHrs = Math.floor(totalMin / 60);
+    const totalMins = totalMin % 60;
 
-  const stats = [
-    { label: 'Present', value: present, icon: UserCheck, accentColor: '#10b981', iconBg: 'bg-emerald-500' },
-    { label: 'Late', value: late, icon: Clock, accentColor: '#f59e0b', iconBg: 'bg-amber-500' },
-    { label: 'Absent', value: absent, icon: AlertCircle, accentColor: '#ef4444', iconBg: 'bg-red-500' },
-    { label: 'WFH', value: wfh, icon: Coffee, accentColor: '#3b82f6', iconBg: 'bg-blue-500' },
-    { label: 'Total Hours', value: `${totalHrs}h ${totalMins}m`, icon: TrendingUp, accentColor: '#8b5cf6', iconBg: 'bg-violet-500' },
-  ];
+    return [
+      { label: 'Present', value: present, icon: UserCheck, accentColor: '#10b981', iconBg: 'bg-emerald-500' },
+      { label: 'Late', value: late, icon: Clock, accentColor: '#f59e0b', iconBg: 'bg-amber-500' },
+      { label: 'Absent', value: absent, icon: AlertCircle, accentColor: '#ef4444', iconBg: 'bg-red-500' },
+      { label: 'WFH', value: wfh, icon: Coffee, accentColor: '#3b82f6', iconBg: 'bg-blue-500' },
+      { label: 'Total Hours', value: `${totalHrs}h ${totalMins}m`, icon: TrendingUp, accentColor: '#8b5cf6', iconBg: 'bg-violet-500' },
+    ];
+  }, [records]);
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
@@ -243,7 +244,6 @@ function AttendanceTable({
   if (loading) {
     return (
       <div className="p-4 space-y-3">
-        {/* Table header skeleton */}
         <div className="flex gap-3 pb-3 border-b border-border/40">
           {showEmployee && <Skeleton width={120} height={14} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />}
           <Skeleton width={90} height={14} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
@@ -253,7 +253,6 @@ function AttendanceTable({
           <Skeleton width={60} height={14} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
           <Skeleton width={70} height={14} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
         </div>
-        {/* Table rows skeleton */}
         {Array.from({ length: 8 }).map((_, i) => (
           <div key={i} className="flex items-center gap-3 py-2">
             {showEmployee && (
@@ -282,8 +281,8 @@ function AttendanceTable({
     );
   }
 
-  // Only show session-2 columns when at least one record in the view is hybrid/wfh
-  const showSession2 = records.some(r => r.work_type === 'hybrid' || r.work_type === 'wfh');
+  // 2. Memoized Session Column detection
+  const showSession2 = useMemo(() => records.some(r => r.work_type === 'hybrid' || r.work_type === 'wfh'), [records]);
 
   return (
     <div className="overflow-x-auto">
@@ -302,76 +301,78 @@ function AttendanceTable({
           </tr>
         </thead>
         <tbody>
-          {records.map((record, i) => (
-            <tr
-              key={record.id ?? i}
-              className={`border-b border-border/40 last:border-0 transition-colors hover:bg-muted/30 ${isToday(record.date) ? 'bg-primary/5' : ''
-                }`}
-            >
-              {showEmployee && (
+          {records.map((record, i) => {
+            const isTodayDate = isToday(record.date);
+            return (
+              <tr
+                key={record.id ?? i}
+                className={`border-b border-border/40 last:border-0 transition-colors hover:bg-muted/30 ${isTodayDate ? 'bg-primary/5' : ''}`}
+              >
+                {showEmployee && (
+                  <td className="py-3 px-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold flex-shrink-0">
+                        {record.employee_name?.charAt(0)?.toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-medium truncate max-w-[140px]">{record.employee_name}</p>
+                        {record.employee_emp_id && (
+                          <p className="text-xs text-muted-foreground">{record.employee_emp_id}</p>
+                        )}
+                      </div>
+                    </div>
+                  </td>
+                )}
                 <td className="py-3 px-3">
-                  <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold flex-shrink-0">
-                      {record.employee_name?.charAt(0)?.toUpperCase()}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="font-medium truncate max-w-[140px]">{record.employee_name}</p>
-                      {record.employee_emp_id && (
-                        <p className="text-xs text-muted-foreground">{record.employee_emp_id}</p>
-                      )}
-                    </div>
+                  <div className="flex items-center gap-1.5">
+                    {isTodayDate && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />
+                    )}
+                    <span className={isTodayDate ? 'font-semibold text-primary' : 'font-medium'}>
+                      {formatDateDisplay(record.date)}
+                    </span>
                   </div>
                 </td>
-              )}
-              <td className="py-3 px-3">
-                <div className="flex items-center gap-1.5">
-                  {isToday(record.date) && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />
-                  )}
-                  <span className={isToday(record.date) ? 'font-semibold text-primary' : 'font-medium'}>
-                    {formatDateDisplay(record.date)}
-                  </span>
-                </div>
-              </td>
-              <td className="py-3 px-3 text-sm font-medium">
-                {record.check_in_display
-                  ? <span className="text-emerald-600 dark:text-emerald-400">{record.check_in_display}</span>
-                  : <span className="text-muted-foreground">—</span>}
-              </td>
-              <td className="py-3 px-3 text-sm font-medium">
-                {record.check_out_display
-                  ? <span className="text-sky-600 dark:text-sky-400">{record.check_out_display}</span>
-                  : <span className="text-muted-foreground">—</span>}
-              </td>
-              {showSession2 && (
                 <td className="py-3 px-3 text-sm font-medium">
-                  {record.check_in_2_display
-                    ? <span className="text-emerald-600 dark:text-emerald-400">{record.check_in_2_display}</span>
+                  {record.check_in_display
+                    ? <span className="text-emerald-600 dark:text-emerald-400">{record.check_in_display}</span>
                     : <span className="text-muted-foreground">—</span>}
                 </td>
-              )}
-              {showSession2 && (
                 <td className="py-3 px-3 text-sm font-medium">
-                  {record.check_out_2_display
-                    ? <span className="text-sky-600 dark:text-sky-400">{record.check_out_2_display}</span>
+                  {record.check_out_display
+                    ? <span className="text-sky-600 dark:text-sky-400">{record.check_out_display}</span>
                     : <span className="text-muted-foreground">—</span>}
                 </td>
-              )}
-              <td className="py-3 px-3 text-xs font-medium">
-                {record.hours_display ?? <span className="text-muted-foreground">—</span>}
-              </td>
-              <td className="py-3 px-3">
-                {record.work_type ? (
-                  <span className="text-xs capitalize px-2 py-0.5 rounded bg-secondary text-secondary-foreground">
-                    {record.work_type === 'wfh' ? 'WFH' : record.work_type}
-                  </span>
-                ) : <span className="text-muted-foreground text-xs">—</span>}
-              </td>
-              <td className="py-3 px-3">
-                <StatusBadge status={record.status} />
-              </td>
-            </tr>
-          ))}
+                {showSession2 && (
+                  <td className="py-3 px-3 text-sm font-medium">
+                    {record.check_in_2_display
+                      ? <span className="text-emerald-600 dark:text-emerald-400">{record.check_in_2_display}</span>
+                      : <span className="text-muted-foreground">—</span>}
+                  </td>
+                )}
+                {showSession2 && (
+                  <td className="py-3 px-3 text-sm font-medium">
+                    {record.check_out_2_display
+                      ? <span className="text-sky-600 dark:text-sky-400">{record.check_out_2_display}</span>
+                      : <span className="text-muted-foreground">—</span>}
+                  </td>
+                )}
+                <td className="py-3 px-3 text-xs font-medium">
+                  {record.hours_display ?? <span className="text-muted-foreground">—</span>}
+                </td>
+                <td className="py-3 px-3">
+                  {record.work_type ? (
+                    <span className="text-xs capitalize px-2 py-0.5 rounded bg-secondary text-secondary-foreground">
+                      {record.work_type === 'wfh' ? 'WFH' : record.work_type}
+                    </span>
+                  ) : <span className="text-muted-foreground text-xs">—</span>}
+                </td>
+                <td className="py-3 px-3">
+                  <StatusBadge status={record.status} />
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -392,17 +393,19 @@ function MyAttendanceView() {
     queryKey: ['myAttendance', month, year],
     queryFn: () => apiGet(`/api/attendance?type=my&month=${month}&year=${year}`),
   });
-  
-  const records: AttendanceRecord[] = Array.isArray(recordsData) ? recordsData : [];
+
+  const records: AttendanceRecord[] = useMemo(() => Array.isArray(recordsData) ? recordsData : [], [recordsData]);
 
   // Pagination logic
-  const totalPages = Math.ceil(records.length / RECORDS_PER_PAGE);
-  const paginatedRecords = records.slice(
-    (currentPage - 1) * RECORDS_PER_PAGE,
-    currentPage * RECORDS_PER_PAGE
-  );
+  const { paginatedRecords, totalPages } = useMemo(() => {
+    const totalPagesCount = Math.ceil(records.length / RECORDS_PER_PAGE);
+    const startIdx = (currentPage - 1) * RECORDS_PER_PAGE;
+    return {
+      paginatedRecords: records.slice(startIdx, startIdx + RECORDS_PER_PAGE),
+      totalPages: totalPagesCount
+    };
+  }, [records, currentPage]);
 
-  // Reset to page 1 when month/year changes
   const handleMonthChange = (m: number, y: number) => {
     setMonth(m);
     setYear(y);
@@ -411,7 +414,6 @@ function MyAttendanceView() {
 
   return (
     <div className="space-y-5">
-      {/* Header row */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <MonthPicker month={month} year={year} onChange={handleMonthChange} />
         <div className="flex gap-2">
@@ -426,7 +428,6 @@ function MyAttendanceView() {
         </div>
       </div>
 
-      {/* Stats */}
       {loading ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           {Array.from({ length: 5 }).map((_, i) => (
@@ -443,11 +444,8 @@ function MyAttendanceView() {
         records.length > 0 && <StatsRow records={records} />
       )}
 
-      {/* Table */}
       <div className="stat-card !p-0 overflow-hidden">
         <AttendanceTable records={paginatedRecords} showEmployee={false} loading={loading} />
-        
-        {/* Pagination Controls */}
         {!loading && totalPages > 1 && (
           <div className="p-4 border-t border-border/40 bg-muted/20 flex items-center justify-between">
             <p className="text-xs text-muted-foreground">
@@ -465,11 +463,7 @@ function MyAttendanceView() {
                 <button
                   key={i}
                   onClick={() => setCurrentPage(i + 1)}
-                  className={`min-w-[32px] h-8 rounded-md text-xs font-medium transition-all ${
-                    currentPage === i + 1
-                      ? 'bg-primary text-primary-foreground shadow-sm'
-                      : 'hover:bg-background text-muted-foreground'
-                  }`}
+                  className={`min-w-[32px] h-8 rounded-md text-xs font-medium transition-all ${currentPage === i + 1 ? 'bg-primary text-primary-foreground shadow-sm' : 'hover:bg-background text-muted-foreground'}`}
                 >
                   {i + 1}
                 </button>
@@ -503,7 +497,7 @@ function AllEmployeesView() {
     queryKey: ['employeesFilterList'],
     queryFn: () => apiGet('/api/attendance?type=employee-list'),
   });
-  const employees: Employee[] = Array.isArray(employeesData) ? employeesData : [];
+  const employees: Employee[] = useMemo(() => Array.isArray(employeesData) ? employeesData : [], [employeesData]);
 
   const { data: recordsData, isLoading: loading } = useQuery({
     queryKey: ['allEmployeesAttendance', month, year, selectedEmployee],
@@ -515,31 +509,34 @@ function AllEmployeesView() {
     },
     staleTime: selectedEmployee === 'all' ? 0 : 60000,
   });
-  const records: AttendanceRecord[] = Array.isArray(recordsData) ? recordsData : [];
+  const records: AttendanceRecord[] = useMemo(() => Array.isArray(recordsData) ? recordsData : [], [recordsData]);
 
-  const selectedEmpName = employees.find(e => e.id === selectedEmployee)?.name;
-  const exportFileName = selectedEmployee === 'all'
+  const selectedEmpName = useMemo(() => employees.find(e => e.id === selectedEmployee)?.name, [employees, selectedEmployee]);
+  const exportFileName = useMemo(() => selectedEmployee === 'all'
     ? `team-attendance-${MONTH_NAMES[month - 1]}-${year}`
-    : `${selectedEmpName?.replace(/\s+/g, '-')}-attendance-${MONTH_NAMES[month - 1]}-${year}`;
+    : `${selectedEmpName?.replace(/\s+/g, '-')}-attendance-${MONTH_NAMES[month - 1]}-${year}`, [selectedEmployee, month, year, selectedEmpName]);
 
-  // Client-side search filter (name, email, emp_id)
-  const q = searchQuery.trim().toLowerCase();
-  const filteredRecords = q
-    ? records.filter(r =>
+  // 3. Memoized Search Filtering
+  const filteredRecords = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return records;
+    return records.filter(r =>
       r.employee_name?.toLowerCase().includes(q) ||
       r.employee_email?.toLowerCase().includes(q) ||
       r.employee_emp_id?.toLowerCase().includes(q)
-    )
-    : records;
+    );
+  }, [records, searchQuery]);
 
-  // Pagination logic
-  const totalPages = Math.ceil(filteredRecords.length / RECORDS_PER_PAGE);
-  const paginatedRecords = filteredRecords.slice(
-    (currentPage - 1) * RECORDS_PER_PAGE,
-    currentPage * RECORDS_PER_PAGE
-  );
+  // 4. Memoized Pagination
+  const { paginatedRecords, totalPages } = useMemo(() => {
+    const totalPagesCount = Math.ceil(filteredRecords.length / RECORDS_PER_PAGE);
+    const startIdx = (currentPage - 1) * RECORDS_PER_PAGE;
+    return {
+      paginatedRecords: filteredRecords.slice(startIdx, startIdx + RECORDS_PER_PAGE),
+      totalPages: totalPagesCount
+    };
+  }, [filteredRecords, currentPage]);
 
-  // Reset to page 1 functions
   const handleEmployeeChange = (id: string) => {
     setSelectedEmployee(id);
     setSearchQuery('');
@@ -559,10 +556,8 @@ function AllEmployeesView() {
 
   return (
     <div className="space-y-5">
-      {/* Filter bar – row 1: dropdown + month + export */}
       <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
         <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-          {/* Employee filter */}
           <div className="relative">
             <Users className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
             <select
@@ -581,11 +576,10 @@ function AllEmployeesView() {
             <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
           </div>
 
-          {/* Month picker - only show when specific employee is selected */}
           {selectedEmployee !== 'all' && (
             <MonthPicker month={month} year={year} onChange={handleMonthChange} />
           )}
-          
+
           {selectedEmployee === 'all' && (
             <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-secondary/60 text-sm font-medium">
               <CalendarDays className="w-4 h-4 text-primary" />
@@ -594,7 +588,6 @@ function AllEmployeesView() {
           )}
         </div>
 
-        {/* Export – exports only what's currently shown (filtered) */}
         {filteredRecords.length > 0 && (
           <button
             onClick={() => exportToCSV(filteredRecords, exportFileName)}
@@ -605,7 +598,6 @@ function AllEmployeesView() {
         )}
       </div>
 
-      {/* Search bar – only shown when viewing All Employees */}
       {selectedEmployee === 'all' && (
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
@@ -628,15 +620,12 @@ function AllEmployeesView() {
         </div>
       )}
 
-      {/* Match count badge when searching */}
-      {q && (
+      {searchQuery.trim() && (
         <p className="text-xs text-muted-foreground">
-          Showing <span className="font-medium text-foreground">{filteredRecords.length}</span> of {records.length} records
-          {` matching "`}<span className="font-medium text-foreground">{searchQuery}</span>{`"`}
+          Showing <span className="font-medium text-foreground">{filteredRecords.length}</span> of {records.length} records matching "{searchQuery}"
         </p>
       )}
 
-      {/* Stats – reflect the current search/filter */}
       {loading ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           {Array.from({ length: 5 }).map((_, i) => (
@@ -653,11 +642,8 @@ function AllEmployeesView() {
         filteredRecords.length > 0 && <StatsRow records={filteredRecords} />
       )}
 
-      {/* Table */}
       <div className="stat-card !p-0 overflow-hidden">
         <AttendanceTable records={paginatedRecords} showEmployee={selectedEmployee === 'all'} loading={loading} />
-
-        {/* Pagination Controls */}
         {!loading && totalPages > 1 && (
           <div className="p-4 border-t border-border/40 bg-muted/20 flex items-center justify-between">
             <p className="text-xs text-muted-foreground">
@@ -675,11 +661,7 @@ function AllEmployeesView() {
                 <button
                   key={i}
                   onClick={() => setCurrentPage(i + 1)}
-                  className={`min-w-[32px] h-8 rounded-md text-xs font-medium transition-all ${
-                    currentPage === i + 1
-                      ? 'bg-primary text-primary-foreground shadow-sm'
-                      : 'hover:bg-background text-muted-foreground'
-                  }`}
+                  className={`min-w-[32px] h-8 rounded-md text-xs font-medium transition-all ${currentPage === i + 1 ? 'bg-primary text-primary-foreground shadow-sm' : 'hover:bg-background text-muted-foreground'}`}
                 >
                   {i + 1}
                 </button>
@@ -704,42 +686,30 @@ function AllEmployeesView() {
 export default function AttendancePage() {
   const { user } = useAuth();
   const isAdminOrHR = user?.role === 'admin' || user?.role === 'hr';
-
-  // Tab state: 'mine' or 'all'
   const [tab, setTab] = useState<'mine' | 'all'>('mine');
 
   return (
     <div className="space-y-6 animate-fade-up">
-      {/* Page header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold">Attendance</h1>
           <p className="text-muted-foreground text-sm mt-1">
-            {isAdminOrHR
-              ? 'Manage and review team attendance records'
-              : 'View your monthly attendance history'}
+            {isAdminOrHR ? 'Manage and review team attendance records' : 'View your monthly attendance history'}
           </p>
         </div>
       </div>
 
-      {/* Tabs (Admin/HR only) */}
       {isAdminOrHR && (
         <div className="flex gap-1 p-1 bg-secondary/60 rounded-xl w-fit">
           <button
             onClick={() => setTab('mine')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${tab === 'mine'
-              ? 'bg-background shadow text-foreground'
-              : 'text-muted-foreground hover:text-foreground'
-              }`}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${tab === 'mine' ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
           >
             My Attendance
           </button>
           <button
             onClick={() => setTab('all')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${tab === 'all'
-              ? 'bg-background shadow text-foreground'
-              : 'text-muted-foreground hover:text-foreground'
-              }`}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${tab === 'all' ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
           >
             <Users className="w-4 h-4" />
             All Employees
@@ -747,7 +717,6 @@ export default function AttendancePage() {
         </div>
       )}
 
-      {/* Content */}
       {(tab === 'mine' || !isAdminOrHR) && <MyAttendanceView />}
       {isAdminOrHR && tab === 'all' && <AllEmployeesView />}
     </div>
