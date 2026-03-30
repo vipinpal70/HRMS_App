@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui/button';
@@ -59,16 +59,8 @@ const typeLabels: Record<string, string> = {
   hybrid: 'Hybrid',
 };
 
-export default function LeavePage() {
-  const { user } = useAuth();
-  const isAdmin = user?.role === 'admin' || user?.role === 'hr';
-  const queryClient = useQueryClient();
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ type: 'full-day' as LeaveType, startDate: '', endDate: '', reason: '' });
-  const [searchQuery, setSearchQuery] = useState('');
-
-  // Date Range Helpers
-  const getWeekDates = () => {
+// 1. Move helpers out of the component to prevent re-creation
+const getWeekDates = () => {
     const now = new Date();
     const day = now.getDay();
     const diff = now.getDate() - day + (day === 0 ? -6 : 1); // Adjust to Monday
@@ -78,9 +70,9 @@ export default function LeavePage() {
       start: monday.toISOString().split('T')[0],
       end: sunday.toISOString().split('T')[0]
     };
-  };
+};
 
-  const getMonthDates = () => {
+const getMonthDates = () => {
     const now = new Date();
     // First day of previous month
     const firstDay = new Date(now.getFullYear(), now.getMonth() - 1, 1);
@@ -90,7 +82,15 @@ export default function LeavePage() {
       start: firstDay.toISOString().split('T')[0],
       end: lastDay.toISOString().split('T')[0]
     };
-  };
+};
+
+export default function LeavePage() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin' || user?.role === 'hr';
+  const queryClient = useQueryClient();
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ type: 'full-day' as LeaveType, startDate: '', endDate: '', reason: '' });
+  const [searchQuery, setSearchQuery] = useState('');
 
   const [dateRange, setDateRange] = useState(getMonthDates);
   const [timeFilter, setTimeFilter] = useState<'week' | 'month'>('month');
@@ -121,7 +121,6 @@ export default function LeavePage() {
 
       if (statusA !== statusB) return statusA - statusB;
 
-      // Secondary sort by date (newest first)
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
 
@@ -138,7 +137,7 @@ export default function LeavePage() {
   }, [timeFilter]);
 
 
-  // Delete Leave Request
+  // Actions
   const handleDelete = async (id: string) => {
     const result = await apiDelete(`/api/leave?id=${id}`);
     if (result.success) {
@@ -180,7 +179,6 @@ export default function LeavePage() {
   };
 
   const handleApproval = async (id: string, status: 'approved' | 'rejected' | 'cancelled') => {
-    // Only allow 'approved', 'rejected' or 'cancelled'
     const result = await apiPatch('/api/leave', { action: 'updateStatus', id, status });
     if (result.success) {
       toast.success(result.message);
@@ -190,23 +188,40 @@ export default function LeavePage() {
     }
   };
 
-  const filteredRequests = requests.filter((r) => {
-    const matchesSearch = !isAdmin || !searchQuery ||
-      (r.user_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        r.user_email?.toLowerCase().includes(searchQuery.toLowerCase()));
-    return matchesSearch;
-  });
+  // 2. Memoized filtered requests
+  const filteredRequests = useMemo(() => {
+    return requests.filter((r) => {
+      const matchesSearch = !isAdmin || !searchQuery ||
+        (r.user_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          r.user_email?.toLowerCase().includes(searchQuery.toLowerCase()));
+      return matchesSearch;
+    });
+  }, [requests, searchQuery, isAdmin]);
 
-  // Grouping Logic - Using created_at (Requested On date)
-  const groupedRequests = filteredRequests.reduce((acc, req) => {
-    // Extract just the date part from created_at
-    const date = req.created_at ? new Date(req.created_at).toISOString().split('T')[0] : 'Unknown';
-    if (!acc[date]) acc[date] = [];
-    acc[date].push(req);
-    return acc;
-  }, {} as Record<string, LeaveRequest[]>);
+  // 3. Memoized Grouping and Overlap Detection Logic
+  const { groupedRequests, sortedDates, overlappingKeys } = useMemo(() => {
+    const grouped = filteredRequests.reduce((acc, req) => {
+      const date = req.created_at ? new Date(req.created_at).toISOString().split('T')[0] : 'Unknown';
+      if (!acc[date]) acc[date] = [];
+      acc[date].push(req);
+      return acc;
+    }, {} as Record<string, LeaveRequest[]>);
 
-  const sortedDates = Object.keys(groupedRequests).sort((a, b) => b.localeCompare(a));
+    const keys = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
+    
+    // Group overlaps by the specific request's date range
+    const dateKeyCount: Record<string, number> = {};
+    requests.forEach((r) => {
+      const key = `${r.start_date}__${r.end_date || r.start_date}`;
+      dateKeyCount[key] = (dateKeyCount[key] || 0) + 1;
+    });
+
+    const overlaps = new Set(
+      Object.entries(dateKeyCount).filter(([, count]) => count > 1).map(([key]) => key)
+    );
+
+    return { groupedRequests: grouped, sortedDates: keys, overlappingKeys: overlaps };
+  }, [filteredRequests, requests]);
 
   const formatDateHeader = (dateStr: string) => {
     const date = new Date(dateStr);
@@ -227,16 +242,6 @@ export default function LeavePage() {
       year: 'numeric'
     });
   };
-
-  // Detect overlapping date ranges
-  const dateKeyCount: Record<string, number> = {};
-  requests.forEach((r) => {
-    const key = `${r.start_date}__${r.end_date || r.start_date}`;
-    dateKeyCount[key] = (dateKeyCount[key] || 0) + 1;
-  });
-  const overlappingKeys = new Set(
-    Object.entries(dateKeyCount).filter(([, count]) => count > 1).map(([key]) => key)
-  );
 
   return (
     <div className="space-y-6 animate-fade-up">
@@ -345,13 +350,13 @@ export default function LeavePage() {
             {Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="stat-card space-y-2">
                 <div className="flex items-center gap-2">
-                  <Skeleton width={70} height={22} borderRadius={12} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-                  <Skeleton width={80} height={22} borderRadius={12} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-                  <Skeleton width={90} height={22} borderRadius={12} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+                  <Skeleton width={70} height={22} borderRadius={12} />
+                  <Skeleton width={80} height={22} borderRadius={12} />
+                  <Skeleton width={90} height={22} borderRadius={12} />
                 </div>
-                <Skeleton width="70%" height={14} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-                <Skeleton width="50%" height={12} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-                <Skeleton width="40%" height={12} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+                <Skeleton width="70%" height={14} />
+                <Skeleton width="50%" height={12} />
+                <Skeleton width="40%" height={12} />
               </div>
             ))}
           </div>
@@ -404,7 +409,7 @@ export default function LeavePage() {
                           {isAdmin && req.status !== 'pending' && req.status !== 'retraction_pending' && (
                             <button onClick={() => handleDelete(req.id)} className="flex items-center gap-1 text-xs font-medium text-destructive bg-destructive/10 px-2 py-0.5 rounded">
                               <Trash className="w-3 h-3" />
-                              {loading ? 'Deleting...' : 'Delete'}
+                              Delete
                             </button>
                           )}
                         </div>

@@ -17,7 +17,7 @@ interface CalendarEvent {
   type: 'holiday' | 'event' | 'weekend';
 }
 
-const typeColors = {
+const typeColors: Record<CalendarEvent['type'], string> = {
   holiday: 'bg-destructive/10 text-destructive border-destructive/20',
   event: 'bg-purple-500/10 text-purple-500 border-purple-500/20',
   weekend: 'bg-muted text-muted-foreground border-border',
@@ -25,7 +25,6 @@ const typeColors = {
 
 export default function CalendarPage() {
   const { user, loading: authLoading } = useAuth();
-  const role = user?.role;
   const queryClient = useQueryClient();
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
   const [currentYear] = useState(new Date().getFullYear());
@@ -39,19 +38,19 @@ export default function CalendarPage() {
     queryKey: ['calendarEvents', currentMonth + 1, currentYear],
     queryFn: () => apiGet(`/api/calendar?type=events&month=${currentMonth + 1}&year=${currentYear}`),
     enabled: !!user,
-  });
+  }) as { data: CalendarEvent[] | undefined; isLoading: boolean };
 
   const { data: yearDataRaw, isLoading: loadingHolidays } = useQuery({
     queryKey: ['yearHolidays', currentYear],
     queryFn: () => apiGet(`/api/calendar?type=holidays&year=${currentYear}`),
     enabled: !!user,
-  });
+  }) as { data: CalendarEvent[] | undefined; isLoading: boolean };
 
   const events: CalendarEvent[] = Array.isArray(monthData) ? monthData : [];
   const yearHolidays: CalendarEvent[] = useMemo(() => {
     if (!Array.isArray(yearDataRaw)) return [];
     const todayStr = new Date().toISOString().split('T')[0];
-    return (yearDataRaw as any[])
+    return yearDataRaw
       .filter(h => new Date(h.date).toISOString().split('T')[0] >= todayStr)
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   }, [yearDataRaw]);
@@ -152,7 +151,8 @@ export default function CalendarPage() {
     });
   };
 
-  const handleDeleteHoliday = async (id: any) => {
+  const handleDeleteHoliday = async (id: string | undefined) => {
+    if (!id) return;
     setIsSubmitting(true);
     const res = await apiDelete(`/api/calendar?id=${id}`);
     setIsSubmitting(false);
@@ -240,14 +240,14 @@ export default function CalendarPage() {
             placeholder="Holiday Name (e.g. Diwali)"
             className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
             value={holidayName}
-            onChange={(e) => setHolidayName(e.target.value)}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setHolidayName(e.target.value)}
             required
           />
           <input
             type="date"
             className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
             value={holidayDate}
-            onChange={(e) => setHolidayDate(e.target.value)}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setHolidayDate(e.target.value)}
             required
           />
           <Button type="submit" disabled={isSubmitting}>

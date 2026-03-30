@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { apiGet, apiPut, apiPatch } from '@/lib/apiClient';
 import { toast } from 'react-hot-toast';
@@ -8,35 +9,45 @@ import { Loader2, Shield, MapPin, Wifi, Building2, Clock, CalendarDays } from 'l
 import Skeleton from 'react-loading-skeleton';
 import 'react-loading-skeleton/dist/skeleton.css';
 
+// 1. Move helpers out of the component to prevent re-creation
+const formatTimeLabel = (time: string) => {
+    if (!time) return '';
+    const [h, m] = time.split(':').map(Number);
+    const period = h >= 12 ? 'PM' : 'AM';
+    const displayH = h % 12 || 12;
+    return `${displayH}:${(m || 0).toString().padStart(2, '0')} ${period}`;
+};
+
 export default function SettingsPage() {
   const { user } = useAuth();
-  const [loading, setLoading] = useState(true);
-  const [settings, setSettings] = useState<any>(null);
+  const queryClient = useQueryClient();
   const [saving, setSaving] = useState(false);
-  const [totalLeaves, setTotalLeaves] = useState<number>(20);
   const [savingLeaves, setSavingLeaves] = useState(false);
+  const [totalLeavesInput, setTotalLeavesInput] = useState<number>(0);
 
+  // 2. Transition to useQuery for consistency and better caching
+  const { data: settings, isLoading: settingsLoading } = useQuery({
+    queryKey: ['settings'],
+    queryFn: () => apiGet('/api/settings'),
+  });
+
+  const { data: totalLeaves, isLoading: leavesLoading } = useQuery({
+    queryKey: ['total-leaves'],
+    queryFn: () => apiGet('/api/settings?type=total-leaves'),
+  });
+
+  // Sync totalLeavesInput with the fetched value once it arrives
   useEffect(() => {
-    async function fetchSettings() {
-      try {
-        const [data, currentLeaves] = await Promise.all([
-          apiGet('/api/settings'),
-          apiGet('/api/settings?type=total-leaves'),
-        ]);
-        setSettings(data);
-        setTotalLeaves(currentLeaves);
-      } catch (error) {
-        console.error('Failed to load settings:', error);
-      } finally {
-        setLoading(false);
-      }
+    if (totalLeaves !== undefined) {
+      setTotalLeavesInput(totalLeaves);
     }
-    fetchSettings();
-  }, []);
+  }, [totalLeaves]);
+
+  const isAdmin = useMemo(() => user?.role === 'admin', [user?.role]);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (user?.role !== 'admin') {
+    if (!isAdmin) {
       toast.error('Only admins can update settings.');
       return;
     }
@@ -54,93 +65,31 @@ export default function SettingsPage() {
     });
 
     if (result.success) {
-      const updated = Object.fromEntries(formData.entries());
-      setSettings((prev: any) => ({ ...prev, ...updated }));
       toast.success("Settings saved successfully!");
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
     } else {
       toast.error(result.error || 'Failed to update settings.');
     }
     setSaving(false);
   };
 
-  if (loading) {
-    return (
-      <div className="space-y-6 animate-fade-up max-w-4xl mx-auto">
-        <div>
-          <Skeleton width={120} height={28} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-          <Skeleton width={300} height={14} style={{ marginTop: 6 }} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-        </div>
-        {/* Office Hours skeleton */}
-        <div className="stat-card space-y-4">
-          <div className="flex items-center gap-2">
-            <Skeleton circle width={20} height={20} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-            <Skeleton width={130} height={20} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-          </div>
-          <Skeleton width="80%" height={14} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <Skeleton width={120} height={14} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-              <Skeleton width="100%" height={38} borderRadius={6} style={{ marginTop: 4 }} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-            </div>
-            <div>
-              <Skeleton width={110} height={14} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-              <Skeleton width="100%" height={38} borderRadius={6} style={{ marginTop: 4 }} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-            </div>
-          </div>
-        </div>
-        {/* IP Validation skeleton */}
-        <div className="stat-card space-y-4">
-          <div className="flex items-center gap-2">
-            <Skeleton circle width={20} height={20} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-            <Skeleton width={170} height={20} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-          </div>
-          <Skeleton width="60%" height={14} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-          <Skeleton width={120} height={14} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-          <Skeleton width="100%" height={38} borderRadius={6} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-        </div>
-        {/* Geo-fencing skeleton */}
-        <div className="stat-card space-y-4">
-          <div className="flex items-center gap-2">
-            <Skeleton circle width={20} height={20} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-            <Skeleton width={200} height={20} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-          </div>
-          <Skeleton width="65%" height={14} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i}>
-                <Skeleton width={80} height={14} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-                <Skeleton width="100%" height={38} borderRadius={6} style={{ marginTop: 4 }} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-              </div>
-            ))}
-          </div>
-        </div>
-        {/* Leave Policy skeleton */}
-        <div className="stat-card space-y-4">
-          <div className="flex items-center gap-2">
-            <Skeleton circle width={20} height={20} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-            <Skeleton width={160} height={20} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-          </div>
-          <Skeleton width="75%" height={14} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-          <div className="flex items-end gap-3">
-            <Skeleton width={200} height={38} borderRadius={6} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-            <Skeleton width={110} height={38} borderRadius={8} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  const isAdmin = user?.role === 'admin';
-
-  // Helper to format time for display
-  const formatTimeLabel = (time: string) => {
-    if (!time) return '';
-    const [h, m] = time.split(':').map(Number);
-    const period = h >= 12 ? 'PM' : 'AM';
-    const displayH = h % 12 || 12;
-    return `${displayH}:${(m || 0).toString().padStart(2, '0')} ${period}`;
+  const handleUpdateTotalLeaves = async () => {
+    if (totalLeavesInput < 0 || totalLeavesInput > 365) {
+      toast.error('Value must be between 0 and 365.');
+      return;
+    }
+    setSavingLeaves(true);
+    const result = await apiPatch('/api/settings', { action: 'updateTotalLeaves', newTotal: totalLeavesInput });
+    if (result.success) {
+      toast.success(result.message ?? 'Leave quota updated.');
+      queryClient.invalidateQueries({ queryKey: ['total-leaves'] });
+    } else {
+      toast.error(result.error ?? 'Failed to update quota.');
+    }
+    setSavingLeaves(false);
   };
 
+  // 3. Progressive Loading Strategy: Render Header immediately
   return (
     <div className="space-y-6 animate-fade-up max-w-4xl mx-auto">
       <div>
@@ -156,38 +105,50 @@ export default function SettingsPage() {
             <Clock className="w-5 h-5 text-accent" />
             <h2 className="text-lg font-semibold">Office Hours</h2>
           </div>
-          <p className="text-sm text-muted-foreground">
-            Set the office working hours. Employees can only check-in and check-out within this time window.
-            {settings?.office_start_time && settings?.office_end_time && (
-              <span className="ml-1 font-medium text-foreground">
-                Currently: {formatTimeLabel(settings.office_start_time)} – {formatTimeLabel(settings.office_end_time)}
-              </span>
-            )}
-          </p>
+          {settingsLoading ? (
+             <Skeleton width="80%" height={14} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+          ) : (
+             <p className="text-sm text-muted-foreground">
+                Set the office working hours. Employees can only check-in and check-out within this time window.
+                {settings?.office_start_time && settings?.office_end_time && (
+                  <span className="ml-1 font-medium text-foreground">
+                    Currently: {formatTimeLabel(settings.office_start_time)} – {formatTimeLabel(settings.office_end_time)}
+                  </span>
+                )}
+              </p>
+          )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1">Office Start Time</label>
-              <input
-                type="time"
-                name="office_start_time"
-                defaultValue={settings?.office_start_time?.substring(0, 5) || '09:00'}
-                disabled={!isAdmin}
-                className="w-full p-2 border rounded-md bg-background disabled:opacity-50"
-              />
+              {settingsLoading ? (
+                <Skeleton width="100%" height={38} borderRadius={6} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+              ) : (
+                <input
+                  type="time"
+                  name="office_start_time"
+                  defaultValue={settings?.office_start_time?.substring(0, 5) || '09:00'}
+                  disabled={!isAdmin}
+                  className="w-full p-2 border rounded-md bg-background disabled:opacity-50"
+                />
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Office End Time</label>
-              <input
-                type="time"
-                name="office_end_time"
-                defaultValue={settings?.office_end_time?.substring(0, 5) || '19:00'}
-                disabled={!isAdmin}
-                className="w-full p-2 border rounded-md bg-background disabled:opacity-50"
-              />
+              {settingsLoading ? (
+                <Skeleton width="100%" height={38} borderRadius={6} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+              ) : (
+                <input
+                  type="time"
+                  name="office_end_time"
+                  defaultValue={settings?.office_end_time?.substring(0, 5) || '19:00'}
+                  disabled={!isAdmin}
+                  className="w-full p-2 border rounded-md bg-background disabled:opacity-50"
+                />
+              )}
             </div>
           </div>
-          {!isAdmin && (
+          {!isAdmin && !settingsLoading && (
             <p className="text-xs text-muted-foreground italic">Only administrators can change office hours.</p>
           )}
         </div>
@@ -202,14 +163,18 @@ export default function SettingsPage() {
 
           <div>
             <label className="block text-sm font-medium mb-1">Office IP Range (CIDR)</label>
-            <input
-              type="text"
-              name="allowed_ip_range"
-              defaultValue={settings?.allowed_ip_range || ''}
-              disabled={!isAdmin}
-              className="w-full p-2 border rounded-md bg-background disabled:opacity-50"
-              placeholder="e.g. 192.168.1.0/24"
-            />
+            {settingsLoading ? (
+              <Skeleton width="100%" height={38} borderRadius={6} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+            ) : (
+              <input
+                type="text"
+                name="allowed_ip_range"
+                defaultValue={settings?.allowed_ip_range || ''}
+                disabled={!isAdmin}
+                className="w-full p-2 border rounded-md bg-background disabled:opacity-50"
+                placeholder="e.g. 192.168.1.0/24"
+              />
+            )}
           </div>
         </div>
 
@@ -224,35 +189,47 @@ export default function SettingsPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1">Latitude</label>
-              <input
-                type="number"
-                step="any"
-                name="office_lat"
-                defaultValue={settings?.office_lat || ''}
-                disabled={!isAdmin}
-                className="w-full p-2 border rounded-md bg-background disabled:opacity-50"
-              />
+              {settingsLoading ? (
+                 <Skeleton width="100%" height={38} borderRadius={6} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+              ) : (
+                <input
+                  type="number"
+                  step="any"
+                  name="office_lat"
+                  defaultValue={settings?.office_lat || ''}
+                  disabled={!isAdmin}
+                  className="w-full p-2 border rounded-md bg-background disabled:opacity-50"
+                />
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Longitude</label>
-              <input
-                type="number"
-                step="any"
-                name="office_lng"
-                defaultValue={settings?.office_lng || ''}
-                disabled={!isAdmin}
-                className="w-full p-2 border rounded-md bg-background disabled:opacity-50"
-              />
+              {settingsLoading ? (
+                 <Skeleton width="100%" height={38} borderRadius={6} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+              ) : (
+                <input
+                  type="number"
+                  step="any"
+                  name="office_lng"
+                  defaultValue={settings?.office_lng || ''}
+                  disabled={!isAdmin}
+                  className="w-full p-2 border rounded-md bg-background disabled:opacity-50"
+                />
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Radius (m)</label>
-              <input
-                type="number"
-                name="allowed_radius_meters"
-                defaultValue={settings?.allowed_radius_meters || 100}
-                disabled={!isAdmin}
-                className="w-full p-2 border rounded-md bg-background disabled:opacity-50"
-              />
+              {settingsLoading ? (
+                 <Skeleton width="100%" height={38} borderRadius={6} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+              ) : (
+                <input
+                  type="number"
+                  name="allowed_radius_meters"
+                  defaultValue={settings?.allowed_radius_meters || 100}
+                  disabled={!isAdmin}
+                  className="w-full p-2 border rounded-md bg-background disabled:opacity-50"
+                />
+              )}
             </div>
           </div>
         </div>
@@ -271,34 +248,25 @@ export default function SettingsPage() {
           <div className="flex items-end gap-3">
             <div className="flex-1 max-w-[200px]">
               <label className="block text-sm font-medium mb-1">Total Casual Leaves</label>
-              <input
-                type="number"
-                min={0}
-                max={365}
-                value={totalLeaves}
-                onChange={(e) => setTotalLeaves(Number(e.target.value))}
-                disabled={!isAdmin || savingLeaves}
-                className="w-full p-2 border rounded-md bg-background disabled:opacity-50"
-              />
+              {leavesLoading ? (
+                 <Skeleton width="100%" height={38} borderRadius={6} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+              ) : (
+                <input
+                  type="number"
+                  min={0}
+                  max={365}
+                  value={totalLeavesInput}
+                  onChange={(e) => setTotalLeavesInput(Number(e.target.value))}
+                  disabled={!isAdmin || savingLeaves}
+                  className="w-full p-2 border rounded-md bg-background disabled:opacity-50"
+                />
+              )}
             </div>
-            {isAdmin && (
+            {isAdmin && !leavesLoading && (
               <button
                 type="button"
                 disabled={savingLeaves}
-                onClick={async () => {
-                  if (totalLeaves < 0 || totalLeaves > 365) {
-                    toast.error('Value must be between 0 and 365.');
-                    return;
-                  }
-                  setSavingLeaves(true);
-                  const result = await apiPatch('/api/settings', { action: 'updateTotalLeaves', newTotal: totalLeaves });
-                  if (result.success) {
-                    toast.success(result.message ?? 'Leave quota updated.');
-                  } else {
-                    toast.error(result.error ?? 'Failed to update quota.');
-                  }
-                  setSavingLeaves(false);
-                }}
+                onClick={handleUpdateTotalLeaves}
                 className="flex items-center gap-2 bg-info text-white px-4 py-2 rounded-lg font-medium hover:bg-info/90 transition-colors disabled:opacity-50 text-sm"
               >
                 {savingLeaves && <Loader2 className="w-4 h-4 animate-spin" />}
@@ -306,7 +274,7 @@ export default function SettingsPage() {
               </button>
             )}
           </div>
-          {!isAdmin && (
+          {!isAdmin && !leavesLoading && (
             <p className="text-xs text-muted-foreground italic">Only administrators can change leave quotas.</p>
           )}
         </div>
@@ -320,18 +288,22 @@ export default function SettingsPage() {
 
           <div>
             <label className="block text-sm font-medium mb-1">Company Name</label>
-            <input
-              type="text"
-              name="organization_name"
-              defaultValue={settings?.organization_name || ''}
-              disabled={!isAdmin}
-              className="w-full p-2 border rounded-md bg-background disabled:opacity-50"
-            />
+            {settingsLoading ? (
+              <Skeleton width="100%" height={38} borderRadius={6} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+            ) : (
+              <input
+                type="text"
+                name="organization_name"
+                defaultValue={settings?.organization_name || ''}
+                disabled={!isAdmin}
+                className="w-full p-2 border rounded-md bg-background disabled:opacity-50"
+              />
+            )}
           </div>
         </div>
 
         {/* Save Button */}
-        {isAdmin && (
+        {isAdmin && !settingsLoading && (
           <div className="flex justify-end">
             <button
               type="submit"
@@ -344,7 +316,7 @@ export default function SettingsPage() {
           </div>
         )}
 
-        {!isAdmin && (
+        {!isAdmin && !settingsLoading && (
           <div className="bg-destructive/10 text-destructive p-4 rounded-lg flex items-center gap-2 text-sm">
             <Shield className="w-4 h-4" />
             Only administrators can update these settings.

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, CheckCircle2, Clock, Circle, Search, Users, Calendar as CalendarIcon, Loader2, XCircle, Check, ChevronsUpDown, Edit2, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '../components/ui/button';
@@ -60,6 +60,29 @@ const priorityColors = {
 
 const RECORDS_PER_PAGE = 10;
 
+// 1. Move helpers out of the component to prevent re-creation
+const getWeekDates = () => {
+    const now = new Date();
+    const day = now.getDay();
+    const diff = now.getDate() - day + (day === 0 ? -6 : 1); // Adjust to Monday
+    const monday = new Date(now.getFullYear(), now.getMonth(), diff);
+    const sunday = new Date(now.getFullYear(), now.getMonth(), diff + 6);
+    return {
+      start: monday.toISOString().split('T')[0],
+      end: sunday.toISOString().split('T')[0]
+    };
+};
+
+const getMonthDates = () => {
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    return {
+      start: firstDay.toISOString().split('T')[0],
+      end: lastDay.toISOString().split('T')[0]
+    };
+};
+
 export default function TasksPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -86,29 +109,6 @@ export default function TasksPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
 
-  // Date Range Helpers
-  const getWeekDates = () => {
-    const now = new Date();
-    const day = now.getDay();
-    const diff = now.getDate() - day + (day === 0 ? -6 : 1); // Adjust to Monday
-    const monday = new Date(now.getFullYear(), now.getMonth(), diff);
-    const sunday = new Date(now.getFullYear(), now.getMonth(), diff + 6);
-    return {
-      start: monday.toISOString().split('T')[0],
-      end: sunday.toISOString().split('T')[0]
-    };
-  };
-
-  const getMonthDates = () => {
-    const now = new Date();
-    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    return {
-      start: firstDay.toISOString().split('T')[0],
-      end: lastDay.toISOString().split('T')[0]
-    };
-  };
-
   const [dateRange, setDateRange] = useState(getMonthDates);
   const [timeFilter, setTimeFilter] = useState<'week' | 'month'>('month');
 
@@ -129,41 +129,64 @@ export default function TasksPage() {
     },
   });
 
-  const rawTasks: Task[] = Array.isArray(tasksData) ? tasksData : [];
+  const rawTasks: Task[] = useMemo(() => Array.isArray(tasksData) ? tasksData : [], [tasksData]);
 
-  // Sort by latest first across all tasks before searching/paginating
-  const allTasksSorted = [...rawTasks].sort((a, b) =>
-    new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-  );
+  // 2. Memoized Global Sort
+  const allTasksSorted = useMemo(() => {
+      return [...rawTasks].sort((a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+  }, [rawTasks]);
 
-  // Client-side filtering (search)
-  const filtered = allTasksSorted.filter((t) => {
-    const q = searchQuery.toLowerCase();
-    return !searchQuery ||
-      t.title.toLowerCase().includes(q) ||
-      t.description?.toLowerCase().includes(q) ||
-      (viewAll && (
-        t.assignee_name?.toLowerCase().includes(q) ||
-        t.assignee_email?.toLowerCase().includes(q)
-      ));
-  });
+  // 3. Memoized Search filtering
+  const filtered = useMemo(() => {
+      const q = searchQuery.toLowerCase().trim();
+      if (!q) return allTasksSorted;
+      return allTasksSorted.filter((t) => {
+        return t.title.toLowerCase().includes(q) ||
+          t.description?.toLowerCase().includes(q) ||
+          (viewAll && (
+            t.assignee_name?.toLowerCase().includes(q) ||
+            t.assignee_email?.toLowerCase().includes(q)
+          ));
+      });
+  }, [allTasksSorted, searchQuery, viewAll]);
 
-  // Pagination logic
-  const totalPages = Math.ceil(filtered.length / RECORDS_PER_PAGE);
-  const paginatedTasks = filtered.slice(
-    (currentPage - 1) * RECORDS_PER_PAGE,
-    currentPage * RECORDS_PER_PAGE
-  );
+  // 4. Memoized Statistics (Counts and Progress)
+  const { pendingCount, completedCount, totalCount, progress } = useMemo(() => {
+    const pCount = filtered.filter(t => t.status === 'pending' || t.status === 'in_progress').length;
+    const cCount = filtered.filter(t => t.status === 'completed').length;
+    const tCount = filtered.length;
+    return {
+        pendingCount: pCount,
+        completedCount: cCount,
+        totalCount: tCount,
+        progress: tCount > 0 ? (cCount / tCount) * 100 : 0
+    };
+  }, [filtered]);
 
-  // Grouping Logic (apply to paginated set for performance and UI clarity)
-  const groupedTasks = paginatedTasks.reduce((acc, task) => {
-    const date = task.start_day;
-    if (!acc[date]) acc[date] = [];
-    acc[date].push(task);
-    return acc;
-  }, {} as Record<string, Task[]>);
+  // 5. Memoized Pagination logic
+  const { paginatedTasks, totalPages } = useMemo(() => {
+    const totalPagesCount = Math.ceil(filtered.length / RECORDS_PER_PAGE);
+    const startIdx = (currentPage - 1) * RECORDS_PER_PAGE;
+    return {
+      paginatedTasks: filtered.slice(startIdx, startIdx + RECORDS_PER_PAGE),
+      totalPages: totalPagesCount
+    };
+  }, [filtered, currentPage]);
 
-  const sortedDates = Object.keys(groupedTasks).sort((a, b) => b.localeCompare(a));
+  // 6. Memoized Grouping logic (apply to paginated set for performance)
+  const { groupedTasks, sortedDates } = useMemo(() => {
+    const grouped = paginatedTasks.reduce((acc, task) => {
+      const date = task.start_day;
+      if (!acc[date]) acc[date] = [];
+      acc[date].push(task);
+      return acc;
+    }, {} as Record<string, Task[]>);
+
+    const keys = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
+    return { groupedTasks: grouped, sortedDates: keys };
+  }, [paginatedTasks]);
 
   // Reset to page 1 on filter changes
   useEffect(() => {
@@ -328,11 +351,6 @@ export default function TasksPage() {
       year: 'numeric'
     });
   };
-
-  const pendingCount = filtered.filter(t => t.status === 'pending' || t.status === 'in_progress').length;
-  const completedCount = filtered.filter(t => t.status === 'completed').length;
-  const totalCount = filtered.length;
-  const progress = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
 
   const handleStatusChange = async (taskId: string, newStatus: string) => {
     // Optimistic Update
@@ -538,8 +556,8 @@ export default function TasksPage() {
           <div className="space-y-6">
             {Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="p-4 rounded-xl border border-border/50 bg-card space-y-3">
-                <Skeleton width="60%" height={18} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-                <Skeleton width="100%" height={24} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+                <Skeleton width="60%" height={18} />
+                <Skeleton width="100%" height={24} />
               </div>
             ))}
           </div>

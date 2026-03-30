@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Mail, Shield, Loader2, User, Trash, Search, X } from 'lucide-react';
-import { Badge } from '../components/ui/badge';
 import { apiGet, apiDelete } from '@/lib/apiClient';
+import Link from 'next/link';
+import Skeleton from 'react-loading-skeleton';
+import 'react-loading-skeleton/dist/skeleton.css';
 
 interface Profile {
   id: string;
@@ -15,10 +17,6 @@ interface Profile {
   role?: string;
   emp_id?: string;
 }
-import Link from 'next/link';
-import Skeleton from 'react-loading-skeleton';
-import 'react-loading-skeleton/dist/skeleton.css';
-
 
 export default function EmployeesPage() {
   const queryClient = useQueryClient();
@@ -31,13 +29,13 @@ export default function EmployeesPage() {
     queryFn: () => apiGet('/api/profile?type=employees'),
   });
 
-  const employees: Profile[] = Array.isArray(employeesData) ? (employeesData as any[]) : [];
+  // 1. Memoized Employee data derivation
+  const employees: Profile[] = useMemo(() => Array.isArray(employeesData) ? (employeesData as any[]) : [], [employeesData]);
 
   const confirmDelete = async () => {
     if (!confirmDeleteId) return;
     setDeleting(true);
     const res = await apiDelete(`/api/profile?id=${confirmDeleteId}`);
-    console.log("Delete response:", res);
     if (res.success) {
       queryClient.invalidateQueries({ queryKey: ['employees'] });
     }
@@ -45,47 +43,19 @@ export default function EmployeesPage() {
     setConfirmDeleteId(null);
   };
 
-  if (loading) {
-    return (
-      <div className="space-y-6 animate-fade-up">
-        <div>
-          <Skeleton width={130} height={28} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-          <Skeleton width={200} height={14} style={{ marginTop: 6 }} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-        </div>
-        <Skeleton width="100%" height={40} borderRadius={8} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="stat-card space-y-3">
-              <div className="flex items-center gap-3">
-                <Skeleton circle width={40} height={40} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-                <div className="flex-1">
-                  <Skeleton width="60%" height={14} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-                  <Skeleton width="40%" height={12} style={{ marginTop: 4 }} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-                </div>
-              </div>
-              <Skeleton width="75%" height={12} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-              <div className="flex items-center justify-between pt-2 border-t border-border/50">
-                <Skeleton width={50} height={12} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-                <Skeleton width={60} height={16} borderRadius={4} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  // Client-side search filter: runs against `employees` (the actual data source)
-  const q = searchQuery.trim().toLowerCase();
-  const filteredEmployees = q
-    ? employees.filter(emp =>
+  // 2. Memoized Search filtering
+  const filteredEmployees = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return employees;
+    return employees.filter(emp =>
       emp.name?.toLowerCase().includes(q) ||
       emp.email?.toLowerCase().includes(q) ||
       emp.emp_id?.toLowerCase().includes(q) ||
       emp.designation?.toLowerCase().includes(q)
-    )
-    : employees;
+    );
+  }, [employees, searchQuery]);
 
+  // 3. Progressive Loading Strategy: Render Header and SearchBar immediately
   return (
     <div className="space-y-6 animate-fade-up">
       <div>
@@ -114,67 +84,84 @@ export default function EmployeesPage() {
         )}
       </div>
 
-
+      {/* Grid of employees or Skeletal Loading */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filteredEmployees.map((emp) => (
-          <Link
-            key={emp.id}
-            href={`/profile/${emp.id}`}
-            className="stat-card space-y-3 block hover:border-primary/50 transition-all group"
-          >
-            <div className="flex items-center justify-between gap-3">
+        {loading ? (
+          Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="stat-card space-y-3">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary font-bold text-sm group-hover:bg-primary group-hover:text-primary-foreground transition-colors overflow-hidden">
-                  {emp.avatar_url ? (
-                    <img src={emp.avatar_url} alt={emp.name} className="w-full h-full object-cover" />
-                  ) : (
-                    emp.name.split(' ').map(n => n[0]).join('')
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-sm truncate group-hover:text-primary transition-colors">{emp.name}</p>
-                  <p className="text-xs text-muted-foreground">{emp.designation || 'Employee'}</p>
+                <Skeleton circle width={40} height={40} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+                <div className="flex-1">
+                  <Skeleton width="60%" height={14} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+                  <Skeleton width="40%" height={12} style={{ marginTop: 4 }} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
                 </div>
               </div>
-              <button
-                onClick={(e) => {
-                  e.preventDefault();
-                  setConfirmDeleteId(emp.id);
-                }}
-                className="p-1 rounded hover:bg-red-500/10 transition-colors"
-              >
-                <Trash className="w-3.5 h-3.5 text-red-500" />
-              </button>
-            </div>
-
-            <div className="flex items-center gap-2 text-xs text-muted-foreground pt-1">
-              <Mail className="w-3.5 h-3.5" />
-              <span className="truncate">{emp.email}</span>
-            </div>
-
-            <div className="flex items-center justify-between pt-2 border-t border-border/50">
-              <div className="flex items-center gap-1.5">
-                <Shield className="w-3 h-3 text-muted-foreground" />
-                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{emp.role}</span>
+              <Skeleton width="75%" height={12} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+              <div className="flex items-center justify-between pt-2 border-t border-border/50">
+                <Skeleton width={50} height={12} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
+                <Skeleton width={60} height={16} borderRadius={4} baseColor="hsl(var(--muted))" highlightColor="hsl(var(--secondary))" />
               </div>
-              {emp.emp_id && (
-                <span className="text-[10px] font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                  {emp.emp_id}
-                </span>
-              )}
             </div>
-          </Link>
-        ))}
+          ))
+        ) : filteredEmployees.length > 0 ? (
+          filteredEmployees.map((emp) => (
+            <Link
+              key={emp.id}
+              href={`/profile/${emp.id}`}
+              className="stat-card space-y-3 block hover:border-primary/50 transition-all group"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary font-bold text-sm group-hover:bg-primary group-hover:text-primary-foreground transition-colors overflow-hidden">
+                    {emp.avatar_url ? (
+                      <img src={emp.avatar_url} alt={emp.name} className="w-full h-full object-cover" />
+                    ) : (
+                      emp.name.split(' ').map(n => n[0]).join('')
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-sm truncate group-hover:text-primary transition-colors">{emp.name}</p>
+                    <p className="text-xs text-muted-foreground">{emp.designation || 'Employee'}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setConfirmDeleteId(emp.id);
+                  }}
+                  className="p-1 rounded hover:bg-red-500/10 transition-colors"
+                >
+                  <Trash className="w-3.5 h-3.5 text-red-500" />
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2 text-xs text-muted-foreground pt-1">
+                <Mail className="w-3.5 h-3.5" />
+                <span className="truncate">{emp.email}</span>
+              </div>
+
+              <div className="flex items-center justify-between pt-2 border-t border-border/50">
+                <div className="flex items-center gap-1.5">
+                  <Shield className="w-3 h-3 text-muted-foreground" />
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{emp.role}</span>
+                </div>
+                {emp.emp_id && (
+                  <span className="text-[10px] font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                    {emp.emp_id}
+                  </span>
+                )}
+              </div>
+            </Link>
+          ))
+        ) : (
+          <div className="col-span-full text-center py-12 bg-muted/20 rounded-2xl border border-dashed border-border">
+            <User className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
+            <p className="text-muted-foreground">
+              {searchQuery ? `No employees match "${searchQuery}".` : 'No employees found.'}
+            </p>
+          </div>
+        )}
       </div>
-
-      {filteredEmployees.length === 0 && (
-        <div className="text-center py-12 bg-muted/20 rounded-2xl border border-dashed border-border">
-          <User className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
-          <p className="text-muted-foreground">
-            {searchQuery ? `No employees match "${searchQuery}".` : 'No employees found.'}
-          </p>
-        </div>
-      )}
 
       {/* Delete Confirmation Modal */}
       {confirmDeleteId && (
