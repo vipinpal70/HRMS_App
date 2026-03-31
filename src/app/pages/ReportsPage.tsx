@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import Highcharts from "highcharts";
 import HighchartsReact from "highcharts-react-official";
 import { usePDF } from 'react-to-pdf';
@@ -17,7 +17,7 @@ import {
   getEmployeesAttendance
 } from "../api/report/actions";
 
-import { Search, Loader2 } from "lucide-react";
+import { Search, Loader2, Users, Download } from "lucide-react";
 
 // --- TypeScript Interfaces ---
 interface Employee {
@@ -89,89 +89,89 @@ const customColors = {
 
 // 2. Component Extraction: Move BrowserPieChart outside to prevent re-mounting
 const BrowserPieChart = ({ attendanceData, selectedEmployeeName }: { attendanceData: AttendanceRecord[], selectedEmployeeName?: string }) => {
-    const stats = useMemo(() => {
-        if (!attendanceData || attendanceData.length === 0) {
-            return { present: 15, absent: 4, late: 2, wfh: 5, total: 26 };
-        }
-        const s = attendanceData.reduce((acc, record) => {
-            if (record.present === true || record.status === 'on_time') acc.present++;
-            else if (record.status === 'absent') acc.absent++;
-            else if (record.status === 'late') acc.late++;
-            if (record.work_type === 'wfh') acc.wfh++;
-            if (record.status === 'half_day') acc.absent++;
-            return acc;
-        }, { present: 0, absent: 0, late: 0, wfh: 0 });
-
-        const total = s.present + s.absent + s.late + s.wfh;
-        return { ...s, total };
-    }, [attendanceData]);
-
-    const options: Highcharts.Options = useMemo(() => {
-        const total = stats.total;
-        const presentPercentage = total > 0 ? Math.round((stats.present / total) * 100) : 0;
-        const absentPercentage = total > 0 ? Math.round((stats.absent / total) * 100) : 0;
-        const latePercentage = total > 0 ? Math.round((stats.late / total) * 100) : 0;
-        const wfhPercentage = total > 0 ? Math.round((stats.wfh / total) * 100) : 0;
-
-        const presentCombined = presentPercentage + latePercentage + wfhPercentage;
-        const absentCombined = absentPercentage;
-
-        return {
-            chart: { type: "pie", backgroundColor: "transparent" },
-            title: {
-                text: selectedEmployeeName ? `${selectedEmployeeName} - Monthly Attendance Report` : `Monthly Attendance Report`,
-                style: { color: "hsl(var(--foreground))" }
-            },
-            tooltip: {
-                valueSuffix: "%",
-                backgroundColor: "hsl(var(--card))",
-                style: { color: "hsl(var(--foreground))" }
-            },
-            plotOptions: { pie: { shadow: false, center: ["50%", "50%"] } },
-            series: [
-                {
-                    type: "pie",
-                    name: "Detailed Breakdown",
-                    data: [
-                        { name: "Present", y: presentPercentage, color: customColors.Present },
-                        { name: "Late", y: latePercentage, color: customColors.Late },
-                        { name: "WFH", y: wfhPercentage, color: customColors.WFH },
-                        { name: "Absent", y: absentPercentage, color: customColors.Absent }
-                    ],
-                    size: "45%",
-                    dataLabels: { distance: -20, style: { color: "white", fontSize: "10px", textOutline: "none" } }
-                },
-                {
-                    type: "pie",
-                    name: "Overall Attendance",
-                    data: [
-                        { name: "Present", y: presentCombined, color: customColors.Present },
-                        { name: "Absent", y: absentCombined, color: customColors.Absent }
-                    ],
-                    size: "80%",
-                    innerSize: "60%",
-                    dataLabels: {
-                        format: "<b>{point.name}</b>: {point.y}%",
-                        style: { fontWeight: "normal", color: "hsl(var(--foreground))" }
-                    }
-                }
-            ]
-        };
-    }, [stats, selectedEmployeeName]);
-
-    if (stats.total === 0) {
-        return (
-            <div className="w-full max-w-xl mx-auto flex items-center justify-center h-64 text-center text-muted-foreground">
-                <p className="text-sm">No attendance data available {selectedEmployeeName && `for ${selectedEmployeeName}`}</p>
-            </div>
-        );
+  const stats = useMemo(() => {
+    if (!attendanceData || attendanceData.length === 0) {
+      return { present: 15, absent: 4, late: 2, wfh: 5, total: 26 };
     }
+    const s = attendanceData.reduce((acc, record) => {
+      if (record.present === true || record.status === 'on_time') acc.present++;
+      else if (record.status === 'absent') acc.absent++;
+      else if (record.status === 'late') acc.late++;
+      if (record.work_type === 'wfh') acc.wfh++;
+      if (record.status === 'half_day') acc.absent++;
+      return acc;
+    }, { present: 0, absent: 0, late: 0, wfh: 0 });
 
+    const total = s.present + s.absent + s.late + s.wfh;
+    return { ...s, total };
+  }, [attendanceData]);
+
+  const options: Highcharts.Options = useMemo(() => {
+    const total = stats.total;
+    const presentPercentage = total > 0 ? Math.round((stats.present / total) * 100) : 0;
+    const absentPercentage = total > 0 ? Math.round((stats.absent / total) * 100) : 0;
+    const latePercentage = total > 0 ? Math.round((stats.late / total) * 100) : 0;
+    const wfhPercentage = total > 0 ? Math.round((stats.wfh / total) * 100) : 0;
+
+    const presentCombined = presentPercentage + latePercentage + wfhPercentage;
+    const absentCombined = absentPercentage;
+
+    return {
+      chart: { type: "pie", backgroundColor: "transparent" },
+      title: {
+        text: selectedEmployeeName ? `${selectedEmployeeName} - Monthly Attendance Report` : `Monthly Attendance Report`,
+        style: { color: "hsl(var(--foreground))" }
+      },
+      tooltip: {
+        valueSuffix: "%",
+        backgroundColor: "hsl(var(--card))",
+        style: { color: "hsl(var(--foreground))" }
+      },
+      plotOptions: { pie: { shadow: false, center: ["50%", "50%"] } },
+      series: [
+        {
+          type: "pie",
+          name: "Detailed Breakdown",
+          data: [
+            { name: "Present", y: presentPercentage, color: customColors.Present },
+            { name: "Late", y: latePercentage, color: customColors.Late },
+            { name: "WFH", y: wfhPercentage, color: customColors.WFH },
+            { name: "Absent", y: absentPercentage, color: customColors.Absent }
+          ],
+          size: "45%",
+          dataLabels: { distance: -20, style: { color: "white", fontSize: "10px", textOutline: "none" } }
+        },
+        {
+          type: "pie",
+          name: "Overall Attendance",
+          data: [
+            { name: "Present", y: presentCombined, color: customColors.Present },
+            { name: "Absent", y: absentCombined, color: customColors.Absent }
+          ],
+          size: "80%",
+          innerSize: "60%",
+          dataLabels: {
+            format: "<b>{point.name}</b>: {point.y}%",
+            style: { fontWeight: "normal", color: "hsl(var(--foreground))" }
+          }
+        }
+      ]
+    };
+  }, [stats, selectedEmployeeName]);
+
+  if (stats.total === 0) {
     return (
-        <div className="w-full max-w-xl mx-auto">
-            <HighchartsReact highcharts={Highcharts} options={options} />
-        </div>
+      <div className="w-full max-w-xl mx-auto flex items-center justify-center h-64 text-center text-muted-foreground">
+        <p className="text-sm">No attendance data available {selectedEmployeeName && `for ${selectedEmployeeName}`}</p>
+      </div>
     );
+  }
+
+  return (
+    <div className="w-full max-w-xl mx-auto">
+      <HighchartsReact highcharts={Highcharts} options={options} />
+    </div>
+  );
 };
 
 export default function ReportsPage() {
@@ -182,7 +182,8 @@ export default function ReportsPage() {
 
   const [search, setSearch] = useState("");
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
-
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const now = useMemo(() => new Date(), []);
   const currentMonth = now.getMonth() + 1;
   const currentYear = now.getFullYear();
@@ -197,28 +198,28 @@ export default function ReportsPage() {
   const { data: monthlyData, isLoading: monthlyLoading } = useQuery({
     queryKey: ['report-monthly-agg', selectedEmployee?.id],
     queryFn: async () => {
-        if (selectedEmployee?.id) {
-            const res = await getEmployeeReport(selectedEmployee.id);
-            return res?.data ? [...res.data].reverse() : [];
-        }
-        const res = await getMonthlyAggregateData();
-        return res?.data || [];
+      if (selectedEmployee?.id) {
+        const res = await getEmployeeReport(selectedEmployee.id);
+        return res?.data ? [...res.data].reverse() : [];
+      }
+      const res = await getMonthlyAggregateData();
+      return res?.data || [];
     }
   }) as { data: MonthlyAggregate[] | undefined; isLoading: boolean };
 
   const { data: monthlyTasksData, isLoading: tasksLoading } = useQuery({
     queryKey: ['report-monthly-tasks', selectedEmployee?.id],
     queryFn: async () => {
-        const res = await getMonthlyTasksData(selectedEmployee?.id);
-        return res?.data || [];
+      const res = await getMonthlyTasksData(selectedEmployee?.id);
+      return res?.data || [];
     }
   }) as { data: MonthlyTask[] | undefined; isLoading: boolean };
 
   const { data: quarterlyTasksData, isLoading: quarterlyLoading } = useQuery({
     queryKey: ['report-quarterly-tasks', selectedEmployee?.id],
     queryFn: async () => {
-        const res = await getQuarterlyTasksData(selectedEmployee?.id);
-        return res?.data || [];
+      const res = await getQuarterlyTasksData(selectedEmployee?.id);
+      return res?.data || [];
     }
   }) as { data: QuarterlyTask[] | undefined; isLoading: boolean };
 
@@ -231,6 +232,26 @@ export default function ReportsPage() {
   const safeMonthlyTasks = useMemo<MonthlyTask[]>(() => monthlyTasksData || [], [monthlyTasksData]);
   const safeQuarterlyTasks = useMemo<QuarterlyTask[]>(() => quarterlyTasksData || [], [quarterlyTasksData]);
   const safeAttendance = useMemo<AttendanceRecord[]>(() => attendanceData || [], [attendanceData]);
+
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+  const { data: allEmployeesData } = useQuery({
+    queryKey: ['all-employees'],
+    queryFn: () => getEmployeesBySearch(""), // or your "get all" endpoint
+  }) as { data: { success: boolean; data: Employee[] } | undefined };
+
+  const allEmployees = useMemo<Employee[]>(
+    () => allEmployeesData?.success ? allEmployeesData.data || [] : [],
+    [allEmployeesData]
+  );
 
   const handleEmployeeSelect = (emp: Employee) => {
     setSelectedEmployee(emp);
@@ -334,12 +355,13 @@ export default function ReportsPage() {
             </div>
             <button
               onClick={() => { setTimeout(() => toPDF(), 1000); }}
-              className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/80 transition-colors text-sm font-medium mt-4 md:mt-0"
+              className="flex items-center px-4 py-2 bg-primary text-white dark:text-black rounded-lg hover:bg-primary/80 transition-colors text-sm font-medium mt-4 md:mt-0"
             >
+              <Download className="w-4 h-4 mr-2" />
               Export to PDF
             </button>
           </div>
-
+          {/* 
           <div className="stat-card">
             <h3 className="font-semibold mb-4">Search Employee by Name</h3>
             <div className="relative">
@@ -386,6 +408,95 @@ export default function ReportsPage() {
               </div>
             )}
           </div>
+ */}
+          <div className="stat-card">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold">Search Employee by Name</h3>
+              {/* Quick Filter Dropdown */}
+              <div className="relative" ref={dropdownRef}>
+                <button
+                  onClick={() => setDropdownOpen(prev => !prev)}
+                  className="flex items-center gap-2 text-sm px-3 py-2 border rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors min-w-[160px] justify-between"
+                >
+                  <div className="flex items-center gap-2">
+                    <Users className="w-4 h-4 text-muted-foreground" />
+                    <span className="text-sm">{selectedEmployee ? selectedEmployee.name : "All Employees"}</span>
+                  </div>
+                  <svg className={`w-4 h-4 text-muted-foreground transition-transform ${dropdownOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+
+                {dropdownOpen && (
+                  <div className="absolute right-0 top-full mt-1 w-52 border rounded-lg shadow-xl bg-background z-50 py-1">
+                    {/* All Employees option */}
+                    <div
+                      onClick={() => { handleClearSelection(); setDropdownOpen(false); }}
+                      className={`px-4 py-2.5 text-sm cursor-pointer transition-colors hover:bg-black/5 dark:hover:bg-white/5 ${!selectedEmployee ? "font-semibold" : ""}`}
+                    >
+                      All Employees
+                    </div>
+
+                    {/* Employee list */}
+                    {allEmployees.map((emp) => (
+                      <div
+                        key={emp.id}
+                        onClick={() => { handleEmployeeSelect(emp); setDropdownOpen(false); }}
+                        className={`px-4 py-2.5 text-sm cursor-pointer transition-colors hover:bg-black/5 dark:hover:bg-white/5 ${selectedEmployee?.id === emp.id ? "font-semibold" : "text-muted-foreground"}`}
+                      >
+                        {emp.name}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="relative">
+              <div className="flex items-center gap-2">
+                <Search className="w-5 h-5 text-muted-foreground" />
+                <input
+                  type="text"
+                  placeholder="Type employee name to search..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="w-full border rounded-lg px-3 py-2 text-xs pr-10 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              {searchLoading && (
+                <div className="absolute right-3 top-2.5">
+                  <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                </div>
+              )}
+            </div>
+            <div className="mt-3 max-h-48 overflow-y-auto border rounded-lg empty:hidden">
+              {employees.map((emp) => (
+                <div
+                  key={emp.id}
+                  onClick={() => handleEmployeeSelect(emp)}
+                  className="p-3 border-b last:border-b-0 text-sm cursor-pointer hover:bg-black/5 dark:hover:bg-black/20 dark:hover:text-white transition-colors flex justify-between items-center"
+                >
+                  <div>
+                    <div className="font-medium text-hsl(var(--foreground))">{emp.name}</div>
+                    <div className="text-xs text-hsl(var(--foreground))">ID: {emp.email}</div>
+                    <div className="text-xs text-hsl(var(--foreground))">Designation: {emp.designation}</div>
+                  </div>
+                  <div className="text-xs text-blue-500 hover:text-blue-600 font-medium">View Report →</div>
+                </div>
+              ))}
+            </div>
+            {selectedEmployee && (
+              <div className="mt-4 flex justify-end">
+                <button
+                  onClick={handleClearSelection}
+                  className="text-xs text-red-600 hover:text-red-800 font-medium flex items-center gap-2"
+                >
+                  Clear Selection
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* rest of card unchanged */}
 
           <div ref={targetRef}>
             {selectedEmployee && (
@@ -434,7 +545,7 @@ export default function ReportsPage() {
                   {selectedEmployee ? `${selectedEmployee.name} - Quarterly Tasks` : 'All Employees - Quarterly Tasks'}
                 </h3>
                 <div className="w-full max-w-6xl mx-auto">
-                    <HighchartsReact highcharts={Highcharts} options={quarterlyTasksOptions} />
+                  <HighchartsReact highcharts={Highcharts} options={quarterlyTasksOptions} />
                 </div>
               </div>
             </div>
@@ -474,5 +585,5 @@ export default function ReportsPage() {
 
 // Utility for class merging
 function cn(...classes: (string | boolean | undefined)[]) {
-    return classes.filter(Boolean).join(" ");
+  return classes.filter(Boolean).join(" ");
 }

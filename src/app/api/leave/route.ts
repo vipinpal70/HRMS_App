@@ -2,18 +2,20 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 
-function countWorkingDays(startStr: string, endStr: string): number {
+function countCalendarDays(startStr: string, endStr: string): number {
   const start = new Date(startStr);
   const end = new Date(endStr);
-  let count = 0;
-  const cur = new Date(start);
-  while (cur <= end) {
-    const day = cur.getDay();
-    if (day !== 0 && day !== 6) count++;
-    cur.setDate(cur.getDate() + 1);
-  }
-  return count;
+  start.setHours(0, 0, 0, 0);
+  end.setHours(0, 0, 0, 0);
+  return Math.round((end.getTime() - start.getTime()) / 86400000) + 1;
 }
+
+const getLocalISODate = (date = new Date()) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
 
 export async function GET(request: NextRequest) {
   try {
@@ -30,7 +32,7 @@ export async function GET(request: NextRequest) {
     if (!startDate && !endDate) {
       const now = new Date();
       const firstOfPrevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      startDate = firstOfPrevMonth.toISOString().split('T')[0];
+      startDate = getLocalISODate(firstOfPrevMonth);
     }
 
     let query = supabase.from('leave_requests').select(`*, user:user_id(name, email, remaining_leaves, total_leaves)`);
@@ -143,7 +145,11 @@ export async function PATCH(request: NextRequest) {
         const { data: empProfile } = await supabase.from('profiles').select('remaining_leaves').eq('id', leaveReq.user_id).single();
         const currentLeaves = empProfile?.remaining_leaves ?? 0;
         let days = 0;
-        if (leaveReq.category === 'leave') days = countWorkingDays(leaveReq.start_day, leaveReq.end_day || leaveReq.start_day);
+        if (leaveReq.category === 'leave') {
+          days = countCalendarDays(leaveReq.start_day, leaveReq.end_day || leaveReq.start_day);
+        } else if (leaveReq.category === 'halfday') {
+          days = Math.max(0.5, countCalendarDays(leaveReq.start_day, leaveReq.end_day || leaveReq.start_day) * 0.5);
+        }
         if (days > 0) {
           let newBalance = currentLeaves;
           if (shouldDeduct) newBalance = Math.max(0, currentLeaves - days);

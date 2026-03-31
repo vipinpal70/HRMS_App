@@ -1,11 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
+const getLocalISODate = (date = new Date()) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
 function getCurrentMonthRange() {
   const now = new Date();
   const start = new Date(now.getFullYear(), now.getMonth(), 1);
   const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  return { start: start.toISOString().split('T')[0], end: end.toISOString().split('T')[0] };
+  return { start: getLocalISODate(start), end: getLocalISODate(end) };
 }
 
 export async function GET(request: NextRequest) {
@@ -57,7 +64,7 @@ export async function GET(request: NextRequest) {
       creator_name: (task.creator as any)?.name || 'System'
     }));
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = getLocalISODate();
     mapped.sort((a, b) => {
       const aT = a.start_day === today ? 0 : 1, bT = b.start_day === today ? 0 : 1;
       if (aT !== bT) return aT - bT;
@@ -86,7 +93,7 @@ export async function POST(request: NextRequest) {
       const assigneeIds = body.assigned_to.split(',').map((id: string) => id.trim()).filter(Boolean);
       if (assigneeIds.length === 0) return NextResponse.json({ error: 'Please assign the task to at least one employee.' }, { status: 400 });
 
-      const today = new Date().toISOString().split('T')[0];
+      const today = getLocalISODate();
       const startDay = body.start_day || today;
       const rows = assigneeIds.map((aid: string) => ({ title: body.title, description: body.description, assigned_to: aid, priority: body.priority, created_by: user.id, start_day: startDay, end_day: body.end_day || startDay, status: 'pending' }));
 
@@ -98,7 +105,7 @@ export async function POST(request: NextRequest) {
     if (body.action === 'createSelf') {
       const { data: profile } = await supabase.from('profiles').select('name, email, role').eq('id', user.id).single();
       if (!body.title) return NextResponse.json({ error: 'Task title is required.' }, { status: 400 });
-      const start_day = body.start_day || new Date().toISOString().split('T')[0];
+      const start_day = body.start_day || getLocalISODate();
 
       const { error: insertError } = await supabase.from('tasks').insert({ title: body.title, description: body.description, assigned_to: user.id, priority: body.priority || 'medium', created_by: user.id, start_day, end_day: body.end_day || start_day, status: 'pending' });
       if (insertError) throw insertError;
@@ -114,7 +121,7 @@ export async function POST(request: NextRequest) {
     if (body.action === 'checkNotify') {
       const now = new Date();
       if (now.getHours() < 11) return NextResponse.json({ skipped: true });
-      const today = now.toISOString().split('T')[0];
+      const today = getLocalISODate();
       const NOTIF_TITLE = 'No Tasks Added';
       const { data: employees } = await supabase.from('profiles').select('id').eq('role', 'emp');
       if (!employees || employees.length === 0) return NextResponse.json({ success: true });

@@ -86,6 +86,13 @@ function CheckInTimer({ checkInTime }: { checkInTime: Date | null }) {
   );
 }
 
+const getLocalISODate = (date = new Date()) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
 export default function Dashboard() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -117,6 +124,9 @@ export default function Dashboard() {
   const { data: tasksData, isLoading: loadingTasks } = useQuery({
     queryKey: ['dashboardTasks'],
     queryFn: () => apiGet('/api/tasks'),
+    refetchOnWindowFocus: false,
+    refetchOnMount: true,
+    staleTime: 10000
   });
 
   const { data: workTypeData, isLoading: loadingWorkType } = useQuery({
@@ -145,7 +155,7 @@ export default function Dashboard() {
   const effectiveWorkType = (workTypeData as any) || 'office';
   const records = useMemo(() => Array.isArray(historyData) ? (historyData as unknown as AttendanceRecord[]) : [], [historyData]);
   const tasks: any[] = useMemo(() => Array.isArray(tasksData) ? (tasksData as any[]) : [], [tasksData]);
-  
+
   const holidays = useMemo(() => {
     if (!Array.isArray(yearData)) return [];
     return (yearData as any[]).map((h: any) => ({
@@ -294,7 +304,7 @@ export default function Dashboard() {
     ];
   }, [records, tasks]);
 
-  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const todayStr = useMemo(() => getLocalISODate(), []);
   const todayTasks = useMemo(() => tasks.filter(t => t.start_day === todayStr), [tasks, todayStr]);
   const pendingTasks = useMemo(() => tasks.filter(t => t.status !== 'completed' && t.start_day !== todayStr), [tasks, todayStr]);
 
@@ -520,7 +530,7 @@ export default function Dashboard() {
         </div>
         {loadingTasks ? (
           <div className="space-y-3">
-             <Skeleton count={3} height={40} className="rounded-lg" />
+            <Skeleton count={3} height={40} className="rounded-lg" />
           </div>
         ) : todayTasks.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-4">No tasks assigned</p>

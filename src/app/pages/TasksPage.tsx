@@ -61,26 +61,33 @@ const priorityColors = {
 const RECORDS_PER_PAGE = 10;
 
 // 1. Move helpers out of the component to prevent re-creation
+const getLocalISODate = (date = new Date()) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
 const getWeekDates = () => {
-    const now = new Date();
-    const day = now.getDay();
-    const diff = now.getDate() - day + (day === 0 ? -6 : 1); // Adjust to Monday
-    const monday = new Date(now.getFullYear(), now.getMonth(), diff);
-    const sunday = new Date(now.getFullYear(), now.getMonth(), diff + 6);
-    return {
-      start: monday.toISOString().split('T')[0],
-      end: sunday.toISOString().split('T')[0]
-    };
+  const now = new Date();
+  const day = now.getDay();
+  const diff = now.getDate() - day + (day === 0 ? -6 : 1); // Adjust to Monday
+  const monday = new Date(now.getFullYear(), now.getMonth(), diff);
+  const sunday = new Date(now.getFullYear(), now.getMonth(), diff + 6);
+  return {
+    start: getLocalISODate(monday),
+    end: getLocalISODate(sunday)
+  };
 };
 
 const getMonthDates = () => {
-    const now = new Date();
-    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    return {
-      start: firstDay.toISOString().split('T')[0],
-      end: lastDay.toISOString().split('T')[0]
-    };
+  const now = new Date();
+  const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  return {
+    start: getLocalISODate(firstDay),
+    end: getLocalISODate(lastDay)
+  };
 };
 
 export default function TasksPage() {
@@ -125,11 +132,12 @@ export default function TasksPage() {
       if (dateRange.start) params.set('startDate', dateRange.start);
       if (dateRange.end) params.set('endDate', dateRange.end);
       if (filteredEmployee) params.set('employeeFilter', filteredEmployee);
-      return apiGet(`/api/tasks?${params.toString()}`);
+      const result = apiGet(`/api/tasks?${params.toString()}`);
+      console.log("task data: ", result);
+      return result;
     },
-    refetchInterval: 10000,
     refetchOnMount: true,
-    refetchIntervalInBackground: true,
+    refetchOnWindowFocus: false,
     staleTime: 10000,
 
   });
@@ -138,23 +146,23 @@ export default function TasksPage() {
 
   // 2. Memoized Global Sort
   const allTasksSorted = useMemo(() => {
-      return [...rawTasks].sort((a, b) =>
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      );
+    return [...rawTasks].sort((a, b) =>
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
   }, [rawTasks]);
 
   // 3. Memoized Search filtering
   const filtered = useMemo(() => {
-      const q = searchQuery.toLowerCase().trim();
-      if (!q) return allTasksSorted;
-      return allTasksSorted.filter((t) => {
-        return t.title.toLowerCase().includes(q) ||
-          t.description?.toLowerCase().includes(q) ||
-          (viewAll && (
-            t.assignee_name?.toLowerCase().includes(q) ||
-            t.assignee_email?.toLowerCase().includes(q)
-          ));
-      });
+    const q = searchQuery.toLowerCase().trim();
+    if (!q) return allTasksSorted;
+    return allTasksSorted.filter((t) => {
+      return t.title.toLowerCase().includes(q) ||
+        t.description?.toLowerCase().includes(q) ||
+        (viewAll && (
+          t.assignee_name?.toLowerCase().includes(q) ||
+          t.assignee_email?.toLowerCase().includes(q)
+        ));
+    });
   }, [allTasksSorted, searchQuery, viewAll]);
 
   // 4. Memoized Statistics (Counts and Progress)
@@ -163,10 +171,10 @@ export default function TasksPage() {
     const cCount = filtered.filter(t => t.status === 'completed').length;
     const tCount = filtered.length;
     return {
-        pendingCount: pCount,
-        completedCount: cCount,
-        totalCount: tCount,
-        progress: tCount > 0 ? (cCount / tCount) * 100 : 0
+      pendingCount: pCount,
+      completedCount: cCount,
+      totalCount: tCount,
+      progress: tCount > 0 ? (cCount / tCount) * 100 : 0
     };
   }, [filtered]);
 
@@ -240,10 +248,12 @@ export default function TasksPage() {
     });
 
     if (result.success) {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['tasks'] }),
+        queryClient.invalidateQueries({ queryKey: ['dashboardTasks'] })
+      ]);
       toast.success(result.message);
       setIsAddOpen(false);
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboardTasks'] });
     } else {
       toast.error(result.error || 'Failed to create task.');
     }
@@ -262,10 +272,12 @@ export default function TasksPage() {
       start_day: formData.get('start_day'),
     });
     if (result.success) {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['tasks'] }),
+        queryClient.invalidateQueries({ queryKey: ['dashboardTasks'] })
+      ]);
       toast.success(result.message);
       setIsSelfAddOpen(false);
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboardTasks'] });
     } else {
       toast.error(result.error || 'Failed to add task.');
     }
@@ -303,11 +315,13 @@ export default function TasksPage() {
     });
 
     if (result.success) {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['tasks'] }),
+        queryClient.invalidateQueries({ queryKey: ['dashboardTasks'] })
+      ]);
       toast.success(result.message);
       setIsEditOpen(false);
       setEditingTask(null);
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboardTasks'] });
     } else {
       toast.error(result.error || 'Failed to update task.');
     }
@@ -319,11 +333,13 @@ export default function TasksPage() {
     setSaving(true);
     const result = await apiDelete(`/api/tasks?id=${deletingTaskId}`);
     if (result.success) {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['tasks'] }),
+        queryClient.invalidateQueries({ queryKey: ['dashboardTasks'] })
+      ]);
       toast.success(result.message);
       setIsDeleteDialogOpen(false);
       setDeletingTaskId(null);
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboardTasks'] });
     } else {
       toast.error(result.error || 'Failed to delete task.');
     }
@@ -371,11 +387,13 @@ export default function TasksPage() {
         } else {
           toast.error(result.error || 'Failed to update status');
         }
-        queryClient.invalidateQueries({ queryKey: ['tasks'] });
-        queryClient.invalidateQueries({ queryKey: ['dashboardTasks'] });
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['tasks'] }),
+          queryClient.invalidateQueries({ queryKey: ['dashboardTasks'] })
+        ]);
       } catch (err) {
         toast.error('An unexpected error occurred.');
-        queryClient.invalidateQueries({ queryKey: ['tasks'] });
+        await queryClient.invalidateQueries({ queryKey: ['tasks'] });
       }
     });
   };
@@ -488,11 +506,11 @@ export default function TasksPage() {
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="start_day">Start Date</Label>
-                      <Input id="start_day" name="start_day" type="date" defaultValue={new Date().toISOString().split('T')[0]} required />
+                      <Input id="start_day" name="start_day" type="date" defaultValue={getLocalISODate()} required />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="end_day">End Date</Label>
-                      <Input id="end_day" name="end_day" type="date" defaultValue={new Date().toISOString().split('T')[0]} required />
+                      <Input id="end_day" name="end_day" type="date" defaultValue={getLocalISODate()} required />
                     </div>
                   </div>
                   <DialogFooter className="mt-6">
@@ -514,7 +532,7 @@ export default function TasksPage() {
                   <div className="space-y-2"><Label>Description</Label><Textarea name="description" /></div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2"><Label>Priority</Label><Select name="priority" defaultValue="medium"><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="low">Low</SelectItem><SelectItem value="medium">Medium</SelectItem><SelectItem value="high">High</SelectItem></SelectContent></Select></div>
-                    <div className="space-y-2"><Label>Date</Label><Input name="start_day" type="date" required defaultValue={new Date().toISOString().split('T')[0]} /></div>
+                    <div className="space-y-2"><Label>Date</Label><Input name="start_day" type="date" required defaultValue={getLocalISODate()} /></div>
                   </div>
                   <DialogFooter className="mt-6">
                     <Button type="button" variant="outline" onClick={() => setIsSelfAddOpen(false)}>Cancel</Button>

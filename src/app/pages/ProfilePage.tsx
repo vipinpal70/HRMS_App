@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useTransition } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/app/context/AuthContext';
 import { apiGet, apiPatch, apiDelete, apiPostFormData } from '@/lib/apiClient';
 
@@ -46,7 +46,8 @@ import {
     Palmtree,
     Trash2,
     Calendar,
-    Upload
+    Upload,
+    Sun
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { Mosaic } from 'react-loading-indicators';
@@ -54,6 +55,7 @@ import { Mosaic } from 'react-loading-indicators';
 export default function ProfilePage() {
     const { id } = useParams<{ id: string }>();
     const router = useRouter();
+    const queryClient = useQueryClient();
     const { user: currentUser } = useAuth();
     const [profile, setProfile] = useState<Profile | null>(null);
     const [isEditing, setIsEditing] = useState(false);
@@ -76,6 +78,9 @@ export default function ProfilePage() {
         queryKey: ['profile', id],
         queryFn: () => apiGet(`/api/profile?id=${id}`),
         enabled: !!id,
+        refetchOnWindowFocus: false,
+        refetchOnMount: true,
+        staleTime: 10000
     }) as { data: Profile | undefined; isLoading: boolean };
 
     // Sync profile data to local state for editing
@@ -101,11 +106,12 @@ export default function ProfilePage() {
                 submitData.dob = undefined;
             }
 
-            const result = await apiPatch('/api/profile', submitData);
+            const result = await apiPatch('/api/profile', { id, updates: submitData });
             if (result.success) {
                 toast.success(result.message || 'Profile updated');
                 setIsEditing(false);
                 setProfile(prev => prev ? { ...prev, ...formData } : null);
+                queryClient.invalidateQueries({ queryKey: ['profile', id] });
             } else {
                 toast.error(result.error || 'Failed to update profile');
             }
@@ -144,6 +150,7 @@ export default function ProfilePage() {
         try {
             const formData = new FormData();
             formData.append('file', file);
+            formData.append('id', profile.id);
 
             const result = await apiPostFormData(`/api/profile/avatar?userId=${profile.id}`, formData);
 
@@ -154,6 +161,7 @@ export default function ProfilePage() {
 
             setProfile(prev => prev ? { ...prev, avatar_url: result.url } : null);
             toast.success('Avatar updated!');
+            queryClient.invalidateQueries({ queryKey: ['profile', id] });
 
         } catch (err) {
             console.error(err);
@@ -405,6 +413,14 @@ export default function ProfilePage() {
                                         Add Date of Birth
                                     </button>
                                 )}
+                            </div>
+
+                            <div className='space-y-2'>
+                                <label className='text-sm font-medium text-muted-foreground flex items-center gap-2'>
+                                    <Sun className="w-3.5 h-3.5" />
+                                    Compensatory Off
+                                </label>
+                                <p className='w-full bg-muted/30 border border-border rounded-xl px-4 py-2.5 text-foreground'>{profile.add_on_leaves}</p>
                             </div>
 
                             {currentUser?.role === 'admin' && (

@@ -266,8 +266,9 @@ export async function GET(request: NextRequest) {
         endDateStr = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
         await ensureMonthWeekends(supabase, month!, year!);
       }
-      const { data: profile } = await supabase.from('profiles').select('created_at').eq('id', user.id).single();
+      const { data: profile } = await supabase.from('profiles').select('created_at, add_on_leaves').eq('id', user.id).single();
       const joiningDate = profile?.created_at ? profile.created_at.split('T')[0] : '1970-01-01';
+      const myAddOnLeaves = profile?.add_on_leaves || 0;
       let query = supabase.from('attendance').select('*').eq('user_id', user.id).gte('date', startDate).lte('date', endDateStr).order('date', { ascending: false });
       if (limit) query = query.limit(parseInt(limit));
       
@@ -275,6 +276,7 @@ export async function GET(request: NextRequest) {
       if (error) throw error;
       const realRecords = (data || []).map(record => ({
         ...record,
+        employee_add_on_leaves: myAddOnLeaves,
         check_in_display: record.check_in_1 ? formatTime(record.check_in_1) : null,
         check_out_display: record.check_out_1 ? formatTime(record.check_out_1) : null,
         check_in_2_display: record.check_in_2 ? formatTime(record.check_in_2) : null,
@@ -312,7 +314,7 @@ export async function GET(request: NextRequest) {
         await ensureMonthWeekends(supabase, month!, year!);
       }
 
-      let query = supabase.from('attendance').select('*, profiles(id, name, email, emp_id, designation, created_at)').gte('date', startDate).lte('date', endDateStr).order('date', { ascending: false });
+      let query = supabase.from('attendance').select('*, profiles(id, name, email, emp_id, designation, created_at, add_on_leaves)').gte('date', startDate).lte('date', endDateStr).order('date', { ascending: false });
       if (employeeId && employeeId !== 'all') query = query.eq('user_id', employeeId);
 
       const { data, error } = await query;
@@ -324,6 +326,7 @@ export async function GET(request: NextRequest) {
         employee_email: (record.profiles as any)?.email || '',
         employee_emp_id: (record.profiles as any)?.emp_id || '',
         employee_designation: (record.profiles as any)?.designation || '',
+        employee_add_on_leaves: (record.profiles as any)?.add_on_leaves || 0,
         created_at: (record.profiles as any)?.created_at,
         check_in_display: record.check_in_1 ? formatTime(record.check_in_1) : null,
         check_out_display: record.check_out_1 ? formatTime(record.check_out_1) : null,
@@ -341,7 +344,7 @@ export async function GET(request: NextRequest) {
       }
 
       if (todayOnly || (employeeId && employeeId !== 'all')) {
-        let profilesQuery = supabase.from('profiles').select('id, name, email, emp_id, designation, created_at');
+        let profilesQuery = supabase.from('profiles').select('id, name, email, emp_id, designation, created_at, add_on_leaves');
         if (employeeId && employeeId !== 'all') {
           profilesQuery = profilesQuery.eq('id', employeeId);
         }
@@ -357,7 +360,8 @@ export async function GET(request: NextRequest) {
                   employee_name: p.name || 'Unknown', 
                   employee_email: p.email || '', 
                   employee_emp_id: p.emp_id || '', 
-                  employee_designation: p.designation || '', 
+                  employee_designation: p.designation || '',
+                  employee_add_on_leaves: p.add_on_leaves || 0,
                   created_at: p.created_at 
                 } 
               });

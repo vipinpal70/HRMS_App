@@ -232,9 +232,9 @@ export default function AppSidebar({
                     <p className="text-[10px] text-white/60 truncate font-medium">
                       {user?.designation}
                     </p>
-                    <p className="text-[10px] text-blue-500 truncate font-medium">
+                    {/*<p className="text-[10px] text-blue-500 truncate font-medium">
                       {user?.email}
-                    </p>
+                    </p>*/}
                     <p className="text-[10px] text-amber-600 truncate font-medium">
                       {user?.role}
                     </p>

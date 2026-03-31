@@ -35,6 +35,7 @@ interface AttendanceRecord {
   employee_email?: string;
   employee_emp_id?: string;
   employee_designation?: string;
+  employee_add_on_leaves?: number;
 }
 
 interface Employee {
@@ -43,6 +44,7 @@ interface Employee {
   email: string;
   emp_id?: string;
   designation?: string;
+  add_on_leaves?: number;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -132,13 +134,26 @@ function exportToCSV(records: AttendanceRecord[], fileName: string) {
   const totalDaysWork = presentCount + wfhCount;
   const totalWorkingDays = records.length;
 
+  const uniqueEmployeeLeaves = new Map<string, number>();
+  records.forEach(r => {
+    const key = r.employee_email || (r as any).user_id || 'self';
+    if (r.employee_add_on_leaves !== undefined) {
+      uniqueEmployeeLeaves.set(key, r.employee_add_on_leaves);
+    }
+  });
+
+  let compensatoryOffCount = 0;
+  for (const leaves of uniqueEmployeeLeaves.values()) {
+    compensatoryOffCount += leaves;
+  }
+
   const summaryRows = [
     [],
     ['Summary:'],
     ['Total Working Days', totalWorkingDays.toString()],
     ['Present', presentCount.toString()],
     ['Absent', absentCount.toString()],
-    ['Total Days Worked (Present + WFH)', totalDaysWork.toString()],
+    ['Compensatory Off', compensatoryOffCount.toString()],
     ['Total Salary', '']
   ];
 

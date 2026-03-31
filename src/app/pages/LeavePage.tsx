@@ -60,28 +60,35 @@ const typeLabels: Record<string, string> = {
 };
 
 // 1. Move helpers out of the component to prevent re-creation
+const getLocalISODate = (date = new Date()) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
 const getWeekDates = () => {
-    const now = new Date();
-    const day = now.getDay();
-    const diff = now.getDate() - day + (day === 0 ? -6 : 1); // Adjust to Monday
-    const monday = new Date(now.getFullYear(), now.getMonth(), diff);
-    const sunday = new Date(now.getFullYear(), now.getMonth(), diff + 6);
-    return {
-      start: monday.toISOString().split('T')[0],
-      end: sunday.toISOString().split('T')[0]
-    };
+  const now = new Date();
+  const day = now.getDay();
+  const diff = now.getDate() - day + (day === 0 ? -6 : 1); // Adjust to Monday
+  const monday = new Date(now.getFullYear(), now.getMonth(), diff);
+  const sunday = new Date(now.getFullYear(), now.getMonth(), diff + 6);
+  return {
+    start: getLocalISODate(monday),
+    end: getLocalISODate(sunday)
+  };
 };
 
 const getMonthDates = () => {
-    const now = new Date();
-    // First day of previous month
-    const firstDay = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    // Last day of current month
-    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    return {
-      start: firstDay.toISOString().split('T')[0],
-      end: lastDay.toISOString().split('T')[0]
-    };
+  const now = new Date();
+  // First day of previous month
+  const firstDay = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  // Last day of current month
+  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  return {
+    start: getLocalISODate(firstDay),
+    end: getLocalISODate(lastDay)
+  };
 };
 
 export default function LeavePage() {
@@ -104,10 +111,10 @@ export default function LeavePage() {
       if (dateRange.end) params.set('endDate', dateRange.end);
       return apiGet(`/api/leave?${params.toString()}`);
     },
-    refetchInterval: 3600000,
+    // refetchInterval: 3600000,
+    refetchOnWindowFocus: false,
     refetchOnMount: true,
-    refetchIntervalInBackground: true,
-    staleTime: 3600000,
+    staleTime: 10000,
   });
 
   const requests: LeaveRequest[] = useMemo(() => {
@@ -205,14 +212,14 @@ export default function LeavePage() {
   // 3. Memoized Grouping and Overlap Detection Logic
   const { groupedRequests, sortedDates, overlappingKeys } = useMemo(() => {
     const grouped = filteredRequests.reduce((acc, req) => {
-      const date = req.created_at ? new Date(req.created_at).toISOString().split('T')[0] : 'Unknown';
+      const date = req.created_at ? getLocalISODate(new Date(req.created_at)) : 'Unknown';
       if (!acc[date]) acc[date] = [];
       acc[date].push(req);
       return acc;
     }, {} as Record<string, LeaveRequest[]>);
 
     const keys = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
-    
+
     // Group overlaps by the specific request's date range
     const dateKeyCount: Record<string, number> = {};
     requests.forEach((r) => {
