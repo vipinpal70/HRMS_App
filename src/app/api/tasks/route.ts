@@ -15,6 +15,21 @@ function getCurrentMonthRange() {
   return { start: getLocalISODate(start), end: getLocalISODate(end) };
 }
 
+// Add this utility above the POST handler
+function getDateRange(start: string, end: string): string[] {
+  const dates: string[] = [];
+  const current = new Date(start);
+  const endDate = new Date(end);
+  // Safety cap: max 365 rows
+  let count = 0;
+  while (current <= endDate && count < 365) {
+    dates.push(getLocalISODate(current));
+    current.setDate(current.getDate() + 1);
+    count++;
+  }
+  return dates;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
@@ -105,17 +120,50 @@ export async function POST(request: NextRequest) {
     if (body.action === 'createSelf') {
       const { data: profile } = await supabase.from('profiles').select('name, email, role').eq('id', user.id).single();
       if (!body.title) return NextResponse.json({ error: 'Task title is required.' }, { status: 400 });
-      const start_day = body.start_day || getLocalISODate();
 
-      const { error: insertError } = await supabase.from('tasks').insert({ title: body.title, description: body.description, assigned_to: user.id, priority: body.priority || 'medium', created_by: user.id, start_day, end_day: body.end_day || start_day, status: 'pending' });
+      const start_day = body.start_day || getLocalISODate();
+      const end_day = body.end_day || start_day;
+      const is_daily = body.is_daily === true;
+
+      // Generate rows: one per day if daily, else just start_day
+      const dates = is_daily ? getDateRange(start_day, end_day) : [start_day];
+
+      const rows = dates.map(date => ({
+        title: body.title,
+        description: body.description,
+        assigned_to: user.id,
+        priority: body.priority || 'medium',
+        created_by: user.id,
+        start_day: date,
+        end_day: date,      // each row owns exactly one day
+        status: 'pending',
+        is_daily,           // flag preserved for badge display
+      }));
+
+      const { error: insertError } = await supabase.from('tasks').insert(rows);
       if (insertError) throw insertError;
 
+      // Notify admins
       const { data: admins } = await supabase.from('profiles').select('id').in('role', ['admin']);
       if (admins && admins.length > 0) {
         const empName = profile?.name || profile?.email || 'An employee';
-        await supabase.from('notifications').insert(admins.map(admin => ({ user_id: admin.id, title: 'New Self-Assigned Task', message: `${empName} added a new task for themselves: "${body.title}"`, is_read: false })));
+        const label = is_daily ? `daily task (${dates.length} days)` : 'task';
+        await supabase.from('notifications').insert(
+          admins.map(admin => ({
+            user_id: admin.id,
+            title: 'New Self-Assigned Task',
+            message: `${empName} added a new ${label}: "${body.title}"`,
+            is_read: false,
+          }))
+        );
       }
-      return NextResponse.json({ success: true, message: 'Task added successfully.' });
+
+      return NextResponse.json({
+        success: true,
+        message: is_daily
+          ? `Daily task created for ${dates.length} day(s).`
+          : 'Task added successfully.',
+      });
     }
 
     if (body.action === 'checkNotify') {

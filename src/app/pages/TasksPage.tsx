@@ -35,6 +35,7 @@ interface Task {
   assignee_email?: string;
   assignee_id?: string;
   created_at: string;
+  is_daily?: boolean;
 }
 
 const statusIcons = {
@@ -264,17 +265,31 @@ export default function TasksPage() {
     e.preventDefault();
     setSelfSaving(true);
     const formData = new FormData(e.currentTarget);
+    const start_day = formData.get('start_day') as string;
+    const end_day = (formData.get('end_day') as string) || start_day;
+    const is_daily = formData.get('is_daily') === 'on';
+
+    // Validate: end >= start
+    if (end_day < start_day) {
+      toast.error('End date must be on or after start date.');
+      setSelfSaving(false);
+      return;
+    }
+
     const result = await apiPost('/api/tasks', {
       action: 'createSelf',
       title: formData.get('title'),
       description: formData.get('description'),
       priority: formData.get('priority'),
-      start_day: formData.get('start_day'),
+      start_day,
+      end_day,
+      is_daily,
     });
+
     if (result.success) {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['tasks'] }),
-        queryClient.invalidateQueries({ queryKey: ['dashboardTasks'] })
+        queryClient.invalidateQueries({ queryKey: ['dashboardTasks'] }),
       ]);
       toast.success(result.message);
       setIsSelfAddOpen(false);
@@ -523,20 +538,69 @@ export default function TasksPage() {
           ) : (
             <Dialog open={isSelfAddOpen} onOpenChange={setIsSelfAddOpen}>
               <DialogTrigger asChild>
-                <Button className="bg-primary text-primary-foreground gap-2"><Plus className="w-4 h-4" /> Add My Task</Button>
+                <Button className="bg-primary text-primary-foreground gap-2">
+                  <Plus className="w-4 h-4" /> Add My Task
+                </Button>
               </DialogTrigger>
               <DialogContent className="sm:max-w-[480px]">
                 <DialogHeader><DialogTitle>Add My Task</DialogTitle></DialogHeader>
                 <form onSubmit={handleCreateSelfTask} className="space-y-4 mt-4">
-                  <div className="space-y-2"><Label>Title</Label><Input name="title" required /></div>
-                  <div className="space-y-2"><Label>Description</Label><Textarea name="description" /></div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2"><Label>Priority</Label><Select name="priority" defaultValue="medium"><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="low">Low</SelectItem><SelectItem value="medium">Medium</SelectItem><SelectItem value="high">High</SelectItem></SelectContent></Select></div>
-                    <div className="space-y-2"><Label>Date</Label><Input name="start_day" type="date" required defaultValue={getLocalISODate()} /></div>
+                  <div className="space-y-2">
+                    <Label>Title</Label>
+                    <Input name="title" required />
                   </div>
+                  <div className="space-y-2">
+                    <Label>Description</Label>
+                    <Textarea name="description" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Priority</Label>
+                    <Select name="priority" defaultValue="medium">
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="low">Low</SelectItem>
+                        <SelectItem value="medium">Medium</SelectItem>
+                        <SelectItem value="high">High</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Start Date</Label>
+                      <Input name="start_day" type="date" required defaultValue={getLocalISODate()} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>End Date</Label>
+                      <Input name="end_day" type="date" defaultValue={getLocalISODate()} />
+                      {/* <p className="text-[11px] text-muted-foreground">
+                        Leave same as start date for a single-day task
+                      </p> */}
+                    </div>
+                  </div>
+
+                  {/* Daily checkbox + conditional end date */}
+                  <div className="flex items-center gap-3 p-3 rounded-xl border border-border/60 bg-muted/20">
+                    <input
+                      type="checkbox"
+                      id="is_daily"
+                      name="is_daily"
+                      className="w-4 h-4 accent-primary cursor-pointer"
+                    />
+                    <div>
+                      <label htmlFor="is_daily" className="text-sm font-medium cursor-pointer">
+                        Repeat Daily
+                      </label>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        Creates this task for each day in the date range
+                      </p>
+                    </div>
+                  </div>
+
                   <DialogFooter className="mt-6">
                     <Button type="button" variant="outline" onClick={() => setIsSelfAddOpen(false)}>Cancel</Button>
-                    <Button type="submit" disabled={selfSaving}>{selfSaving ? 'Saving...' : 'Add Task'}</Button>
+                    <Button type="submit" disabled={selfSaving}>
+                      {selfSaving ? 'Saving...' : 'Add Task'}
+                    </Button>
                   </DialogFooter>
                 </form>
               </DialogContent>
@@ -617,6 +681,11 @@ export default function TasksPage() {
                       <div className="flex flex-wrap items-center gap-3 mt-4 text-[11px] text-muted-foreground font-medium">
                         {viewAll && task.assignee_name && <span className="bg-secondary px-2 py-0.5 rounded-md font-bold text-secondary-foreground"><Users className="w-3 h-3 inline mr-1" />{task.assignee_name.toUpperCase()}</span>}
                         <span className={cn("px-2 py-0.5 rounded-md uppercase font-bold tracking-wider", priorityColors[task.priority])}>{task.priority}</span>
+                        {task.is_daily && (
+                          <span className="px-2 py-0.5 rounded-md text-[11px] font-bold uppercase tracking-wider bg-purple-500/10 text-purple-500">
+                            Daily
+                          </span>
+                        )}
                         <div className="flex items-center gap-1.5 bg-muted/50 px-2 py-0.5 rounded-md"><Clock className="w-3 h-3" />{new Date(task.start_day).toLocaleDateString()}</div>
                       </div>
                     </div>
@@ -652,13 +721,12 @@ export default function TasksPage() {
           <form onSubmit={handleUpdateTask} className="space-y-4 mt-4">
             <div className="space-y-2"><Label>Title</Label><Input name="title" defaultValue={editingTask?.title} required /></div>
             <div className="space-y-2"><Label>Description</Label><Textarea name="description" defaultValue={editingTask?.description} /></div>
+            <div className="space-y-2"><Label>Priority</Label><Select name="priority" defaultValue={editingTask?.priority}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="low">Low</SelectItem><SelectItem value="medium">Medium</SelectItem><SelectItem value="high">High</SelectItem></SelectContent></Select></div>
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2"><Label>Priority</Label><Select name="priority" defaultValue={editingTask?.priority}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="low">Low</SelectItem><SelectItem value="medium">Medium</SelectItem><SelectItem value="high">High</SelectItem></SelectContent></Select></div>
               <div className="space-y-2"><Label>Start Date</Label><Input name="start_day" type="date" defaultValue={editingTask?.start_day} required /></div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2"><Label>End Date</Label><Input name="end_day" type="date" defaultValue={editingTask?.end_day} required /></div>
             </div>
+
             <DialogFooter className="mt-6">
               <Button type="button" variant="outline" onClick={() => setIsEditOpen(false)}>Cancel</Button>
               <Button type="submit" disabled={saving}>Save Changes</Button>

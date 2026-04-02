@@ -104,11 +104,13 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(false);
   const [isWithinHours, setIsWithinHours] = useState(true);
   const [currentYear] = useState(new Date().getFullYear());
+  const todayDateKey = useMemo(() => getLocalISODate(), []);
 
   const { data: todayData, isLoading: loadingToday } = useQuery({
-    queryKey: ['todayStatus'],
+    queryKey: ['todayStatus', todayDateKey],
     queryFn: () => apiGet('/api/attendance?type=today'),
     staleTime: 0,
+    gcTime: 0,
   });
 
   const { data: settingsData, isLoading: loadingSettings } = useQuery({
@@ -219,7 +221,7 @@ export default function Dashboard() {
             setCheckedIn(true);
             setCheckInTime(new Date());
             const refreshed = await apiGet('/api/attendance?type=today');
-            if (refreshed) queryClient.setQueryData(['todayStatus'], refreshed);
+            if (refreshed) queryClient.setQueryData(['todayStatus', todayDateKey], refreshed);
             const workType = await apiGet('/api/attendance?type=effective-work-type');
             if (workType) queryClient.setQueryData(['effectiveWorkType'], workType);
           }
