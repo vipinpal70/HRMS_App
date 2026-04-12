@@ -4,7 +4,6 @@ import { useState, useMemo, useRef, useEffect } from "react";
 import Highcharts from "highcharts";
 import HighchartsReact from "highcharts-react-official";
 import { usePDF } from 'react-to-pdf';
-import Skeleton from 'react-loading-skeleton';
 import 'react-loading-skeleton/dist/skeleton.css';
 import { useQuery } from '@tanstack/react-query';
 
@@ -91,14 +90,18 @@ const customColors = {
 const BrowserPieChart = ({ attendanceData, selectedEmployeeName }: { attendanceData: AttendanceRecord[], selectedEmployeeName?: string }) => {
   const stats = useMemo(() => {
     if (!attendanceData || attendanceData.length === 0) {
-      return { present: 15, absent: 4, late: 2, wfh: 5, total: 26 };
+      return { present: 0, absent: 0, late: 0, wfh: 0, total: 0 };
     }
     const s = attendanceData.reduce((acc, record) => {
-      if (record.present === true || record.status === 'on_time') acc.present++;
-      else if (record.status === 'absent') acc.absent++;
-      else if (record.status === 'late') acc.late++;
-      if (record.work_type === 'wfh') acc.wfh++;
-      if (record.status === 'half_day') acc.absent++;
+      if (record.work_type === 'wfh') {
+        acc.wfh++;
+      } else if (record.status === 'late') {
+        acc.late++;
+      } else if (record.status === 'absent' || record.status === 'half_day') {
+        acc.absent++;
+      } else if (record.present === true || record.status === 'on_time') {
+        acc.present++;
+      }
       return acc;
     }, { present: 0, absent: 0, late: 0, wfh: 0 });
 
@@ -225,7 +228,12 @@ export default function ReportsPage() {
 
   const { data: attendanceData, isLoading: attendanceLoading } = useQuery({
     queryKey: ['report-attendance', selectedEmployee?.id, currentMonth, currentYear],
-    queryFn: () => getEmployeesAttendance(currentMonth, currentYear, selectedEmployee?.id)
+    queryFn: async () => {
+      const url = `/api/attendance?type=employees&month=${currentMonth}&year=${currentYear}&employeeId=${selectedEmployee?.id || 'all'}`;
+      const res = await fetch(url);
+      if (!res.ok) return [];
+      return res.json();
+    }
   }) as { data: AttendanceRecord[] | undefined; isLoading: boolean };
 
   const employees = useMemo<Employee[]>(() => employeeSearchResult?.success ? employeeSearchResult.data || [] : [], [employeeSearchResult]);
