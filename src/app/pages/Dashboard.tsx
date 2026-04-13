@@ -320,17 +320,31 @@ export default function Dashboard() {
   const eventDates = useMemo(() => holidays.filter((h) => h.type === 'event').map((h) => h.date), [holidays]);
 
   const upcomingHolidays = useMemo(() => {
-    const now = new Date();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
     return holidays
       .filter((h) => {
-        const isUpcoming = h.date >= now;
+        const hDate = new Date(h.date);
+        hDate.setHours(0, 0, 0, 0);
+
+        const isUpcoming = hDate >= today;
         if (!isUpcoming) return false;
+
         if (h.type === 'event') {
-          return h.date.getMonth() === now.getMonth() && h.date.getFullYear() === now.getFullYear();
+          return hDate.getMonth() === today.getMonth() && hDate.getFullYear() === today.getFullYear();
         }
         return h.type === 'holiday';
       })
-      .sort((a, b) => a.date.getTime() - b.date.getTime());
+      .sort((a, b) => a.date.getTime() - b.date.getTime())
+      .map(h => {
+        const hDate = new Date(h.date);
+        hDate.setHours(0, 0, 0, 0);
+        return {
+          ...h,
+          isToday: hDate.getTime() === today.getTime()
+        };
+      });
   }, [holidays]);
 
   // 4. Implement Progressive Loading
@@ -502,9 +516,13 @@ export default function Dashboard() {
                     {h.type === 'holiday' ? <CloudSun className="w-4 h-4" /> : <Star className="w-4 h-4" />}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{h.label}</p>
+                    <p className="text-sm font-medium truncate">
+                      {h.isToday && h.type === 'event'
+                        ? `🎂 Today is ${h.label.replace('🎂 ', '').replace('Birthday', 'bday')}`
+                        : h.label}
+                    </p>
                     <p className="text-xs text-muted-foreground">
-                      {h.date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                      {h.isToday ? 'Today' : h.date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
                     </p>
                   </div>
                   <Badge variant="outline" className={`text-[10px] shrink-0 ${holidayTypeStyles[h.type as keyof typeof holidayTypeStyles]}`}>
