@@ -80,6 +80,23 @@ export async function POST(request: NextRequest) {
       const month = body.month;
       const year = body.year;
       const lastDay = new Date(year, month, 0).getDate();
+      
+      // Check if weekends are already generated for this month
+      const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+      const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+      
+      const { data: existingWeekend } = await supabase
+        .from('company_calendar')
+        .select('date')
+        .eq('type', 'weekend')
+        .gte('date', startDate)
+        .lte('date', endDate)
+        .limit(1);
+
+      if (existingWeekend && existingWeekend.length > 0) {
+        return NextResponse.json({ success: true, message: 'Weekends already exist.' });
+      }
+
       const weekends = [];
       for (let day = 1; day <= lastDay; day++) {
         const date = new Date(year, month - 1, day);

@@ -1,13 +1,13 @@
 "use client";
 
 import React, { useState, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import {
   Clock, Users, ChevronLeft, ChevronRight, Download, CalendarDays,
-  TrendingUp, UserCheck, AlertCircle, Coffee, Search, X, ChevronDown
+  TrendingUp, UserCheck, AlertCircle, Coffee, Search, X, ChevronDown, Pencil
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { apiGet } from '@/lib/apiClient';
+import { apiGet, apiPost } from '@/lib/apiClient';
 import { toast } from 'react-hot-toast';
 import Skeleton from 'react-loading-skeleton';
 import 'react-loading-skeleton/dist/skeleton.css';
@@ -249,12 +249,142 @@ function StatsRow({ records }: { records: AttendanceRecord[] }) {
   );
 }
 
+// ─── Edit Attendance Modal ────────────────────────────────────────────────────
+
+interface EditFormState {
+  check_in_1: string;
+  check_out_1: string;
+  check_in_2: string;
+  check_out_2: string;
+}
+
+/** Convert an ISO timestamp to "HH:mm" for <input type="time"> */
+function isoToHHmm(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function EditAttendanceModal({
+  record,
+  onClose,
+  onSaved,
+}: {
+  record: AttendanceRecord;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [form, setForm] = useState<EditFormState>({
+    check_in_1: isoToHHmm(record.check_in_1),
+    check_out_1: isoToHHmm(record.check_out_1),
+    check_in_2: isoToHHmm(record.check_in_2),
+    check_out_2: isoToHHmm(record.check_out_2),
+  });
+
+  const mutation = useMutation({
+    mutationFn: async (payload: EditFormState) => {
+      const result = await apiPost('/api/admin/attendance', {
+        userId: (record as any).user_id,
+        date: record.date,
+        check_in_1: payload.check_in_1 || null,
+        check_out_1: payload.check_out_1 || null,
+        check_in_2: payload.check_in_2 || null,
+        check_out_2: payload.check_out_2 || null,
+      });
+      if (result?.error) throw new Error(result.error);
+      return result;
+    },
+    onSuccess: () => {
+      toast.success('Attendance updated successfully');
+      onSaved();
+      onClose();
+    },
+    onError: (err: any) => {
+      toast.error(err?.message ?? 'Failed to update attendance');
+    },
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    mutation.mutate(form);
+  };
+
+  const timeField = (label: string, key: keyof EditFormState) => (
+    <div className="flex flex-col gap-1">
+      <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{label}</label>
+      <input
+        type="time"
+        value={form[key]}
+        onChange={e => setForm(prev => ({ ...prev, [key]: e.target.value }))}
+        className="px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring transition"
+      />
+    </div>
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      <div
+        className="relative z-10 w-full max-w-md rounded-2xl border border-border bg-card shadow-2xl p-6 space-y-5"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between">
+          <div>
+            <h2 className="text-lg font-semibold">Edit Attendance</h2>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              {record.employee_name} &mdash; {formatDateDisplay(record.date)}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            {timeField('Check In 1', 'check_in_1')}
+            {timeField('Check Out 1', 'check_out_1')}
+          </div>
+          {(record.work_type === 'hybrid' || record.work_type === 'wfh') && (
+            <div className="grid grid-cols-2 gap-3">
+              {timeField('Check In 2', 'check_in_2')}
+              {timeField('Check Out 2', 'check_out_2')}
+            </div>
+          )}
+          <p className="text-xs text-muted-foreground">Leave a field empty to clear that time entry.</p>
+          <div className="flex gap-3 pt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-2.5 rounded-lg border border-input text-sm font-medium hover:bg-muted transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={mutation.isPending}
+              className="flex-1 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/80 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {mutation.isPending ? 'Saving…' : 'Save Changes'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ─── Attendance Table ─────────────────────────────────────────────────────────
 
 function AttendanceTable({
-  records, showEmployee, loading,
+  records, showEmployee, loading, onEdit,
 }: {
   records: AttendanceRecord[]; showEmployee: boolean; loading: boolean;
+  onEdit?: (record: AttendanceRecord) => void;
 }) {
   if (loading) {
     return (
@@ -313,6 +443,7 @@ function AttendanceTable({
             <th className="text-left py-3 px-3 font-medium">Hours</th>
             <th className="text-left py-3 px-3 font-medium">Type</th>
             <th className="text-left py-3 px-3 font-medium">Status</th>
+            {onEdit && <th className="py-3 px-3" />}
           </tr>
         </thead>
         <tbody>
@@ -385,6 +516,17 @@ function AttendanceTable({
                 <td className="py-3 px-3">
                   <StatusBadge status={record.status} />
                 </td>
+                {onEdit && (
+                  <td className="py-3 px-3">
+                    <button
+                      onClick={() => onEdit(record)}
+                      className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                      title="Edit attendance"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                  </td>
+                )}
               </tr>
             );
           })}
@@ -507,6 +649,8 @@ function AllEmployeesView() {
   const [selectedEmployee, setSelectedEmployee] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [editingRecord, setEditingRecord] = useState<AttendanceRecord | null>(null);
+  const queryClient = useQueryClient();
 
   const { data: employeesData, isLoading: empLoading } = useQuery({
     queryKey: ['employeesFilterList'],
@@ -657,8 +801,23 @@ function AllEmployeesView() {
         filteredRecords.length > 0 && <StatsRow records={filteredRecords} />
       )}
 
+      {editingRecord && (
+        <EditAttendanceModal
+          record={editingRecord}
+          onClose={() => setEditingRecord(null)}
+          onSaved={() => {
+            queryClient.invalidateQueries({ queryKey: ['allEmployeesAttendance'] });
+          }}
+        />
+      )}
+
       <div className="stat-card !p-0 overflow-hidden">
-        <AttendanceTable records={paginatedRecords} showEmployee={selectedEmployee === 'all'} loading={loading} />
+        <AttendanceTable
+          records={paginatedRecords}
+          showEmployee={selectedEmployee === 'all'}
+          loading={loading}
+          onEdit={setEditingRecord}
+        />
         {!loading && totalPages > 1 && (
           <div className="p-4 border-t border-border/40 bg-muted/20 flex items-center justify-between">
             <p className="text-xs text-muted-foreground">

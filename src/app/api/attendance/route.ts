@@ -72,30 +72,49 @@ async function getApprovedLeaveForDate(supabase: any, userId: string, date: stri
   return data ?? null;
 }
 
-async function ensureMonthWeekends(supabase: any, month: number, year: number) {
-  const lastDay = new Date(year, month, 0).getDate();
-  const weekends = [];
-  for (let day = 1; day <= lastDay; day++) {
-    const date = new Date(year, month - 1, day);
-    const dayOfWeek = date.getDay();
-    if (dayOfWeek === 0 || dayOfWeek === 6) {
-      const dateString = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      weekends.push({ date: dateString, type: 'weekend', description: dayOfWeek === 0 ? 'Sunday' : 'Saturday' });
-    }
-  }
-  await supabase.from('company_calendar').upsert(weekends, { onConflict: 'date', ignoreDuplicates: true });
+function isWeekend(dateString: string): boolean {
+  const [year, month, day] = dateString.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  const dayOfWeek = date.getDay();
+  return dayOfWeek === 0 || dayOfWeek === 6;
 }
 
 async function buildAbsentDays(
-  supabase: any, userId: string, startDate: string, endDate: string,
-  joiningDate: string, existingDates: Set<string>,
-  employeeMeta?: { employee_name: string; employee_email: string; employee_emp_id: string; employee_designation: string; user_id: string; }
+  supabase: any,
+  userId: string,
+  startDate: string,
+  endDate: string,
+  joiningDate: string,
+  existingDates: Set<string>,
+  employeeMeta?: { employee_name: string; employee_email: string; employee_emp_id: string; employee_designation: string; user_id: string; },
+  prefetchedHolidays?: Set<string>,
+  prefetchedLeaves?: any[]
 ): Promise<any[]> {
   const todayStr = getOrgDateString();
-  const { data: calDays } = await supabase.from('company_calendar').select('date, type').gte('date', startDate).lte('date', endDate).in('type', ['weekend', 'holiday']);
-  const nonWorkingDates = new Set<string>((calDays || []).map((d: any) => d.date as string));
 
-  const { data: leaves } = await supabase.from('leave_requests').select('category, start_day, end_day').eq('user_id', userId).eq('status', 'approved').in('category', ['leave', 'halfday']).lte('start_day', endDate).gte('end_day', startDate);
+  let holidayDates = prefetchedHolidays;
+  if (!holidayDates) {
+    const { data: calDays } = await supabase
+      .from('company_calendar')
+      .select('date')
+      .gte('date', startDate)
+      .lte('date', endDate)
+      .eq('type', 'holiday');
+    holidayDates = new Set<string>((calDays || []).map((d: any) => d.date as string));
+  }
+
+  let leaves = prefetchedLeaves;
+  if (!leaves) {
+    const { data } = await supabase
+      .from('leave_requests')
+      .select('category, start_day, end_day')
+      .eq('user_id', userId)
+      .eq('status', 'approved')
+      .in('category', ['leave', 'halfday'])
+      .lte('start_day', endDate)
+      .gte('end_day', startDate);
+    leaves = data || [];
+  }
 
   const leaveMap = new Map<string, 'absent' | 'half_day'>();
   for (const lv of leaves || []) {
@@ -118,7 +137,8 @@ async function buildAbsentDays(
     if (ds > todayStr) continue;
     if (ds === todayStr && !hasLeaveToday) continue;
     if (ds < joiningDate) continue;
-    if (nonWorkingDates.has(ds)) continue;
+    if (isWeekend(ds)) continue;
+    if (holidayDates.has(ds)) continue;
     if (existingDates.has(ds)) continue;
     const absentStatus = leaveMap.get(ds) ?? 'absent';
     result.push({
@@ -233,8 +253,6 @@ export async function GET(request: NextRequest) {
 
     if (type === 'today') {
       if (!user) return NextResponse.json(null);
-      const now = getOrgTime();
-      await ensureMonthWeekends(supabase, now.getMonth() + 1, now.getFullYear());
       const today = getOrgDateString();
       const { data } = await supabase.from('attendance').select('*').eq('user_id', user.id).eq('date', today).single();
       return NextResponse.json(data);
@@ -264,7 +282,6 @@ export async function GET(request: NextRequest) {
         startDate = `${year}-${String(month).padStart(2, '0')}-01`;
         const lastDay = new Date(year!, month!, 0).getDate();
         endDateStr = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
-        await ensureMonthWeekends(supabase, month!, year!);
       }
       const { data: profile } = await supabase.from('profiles').select('created_at, add_on_leaves').eq('id', user.id).single();
       const joiningDate = profile?.created_at ? profile.created_at.split('T')[0] : '1970-01-01';
@@ -311,7 +328,6 @@ export async function GET(request: NextRequest) {
         startDate = `${year}-${String(month).padStart(2, '0')}-01`;
         const lastDay = new Date(year!, month!, 0).getDate();
         endDateStr = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
-        await ensureMonthWeekends(supabase, month!, year!);
       }
 
       let query = supabase.from('attendance').select('*, profiles(id, name, email, emp_id, designation, created_at, add_on_leaves)').gte('date', startDate).lte('date', endDateStr).order('date', { ascending: false });
@@ -370,10 +386,42 @@ export async function GET(request: NextRequest) {
         }
       }
 
+      // Prefetch holidays and leaves in a batch
+      const { data: calDays } = await supabase
+        .from('company_calendar')
+        .select('date')
+        .gte('date', startDate)
+        .lte('date', endDateStr)
+        .eq('type', 'holiday');
+      const holidayDates = new Set<string>((calDays || []).map((d: any) => d.date as string));
+
+      const userIds = Array.from(recordsByUser.keys());
+      let allLeaves: any[] = [];
+      if (userIds.length > 0) {
+        const { data: leavesData } = await supabase
+          .from('leave_requests')
+          .select('user_id, category, start_day, end_day')
+          .in('user_id', userIds)
+          .eq('status', 'approved')
+          .in('category', ['leave', 'halfday'])
+          .lte('start_day', endDateStr)
+          .gte('end_day', startDate);
+        allLeaves = leavesData || [];
+      }
+
+      const leavesByUserId = new Map<string, any[]>();
+      for (const lv of allLeaves) {
+        if (!leavesByUserId.has(lv.user_id)) {
+          leavesByUserId.set(lv.user_id, []);
+        }
+        leavesByUserId.get(lv.user_id)!.push(lv);
+      }
+
       const absentRowArrays = await Promise.all(
         Array.from(recordsByUser.entries()).map(([uid, { dates, meta }]) => {
           const joiningDate = meta.created_at ? meta.created_at.split('T')[0] : '1970-01-01';
-          return buildAbsentDays(supabase, uid, startDate, endDateStr, joiningDate, dates, meta);
+          const userLeaves = leavesByUserId.get(uid) || [];
+          return buildAbsentDays(supabase, uid, startDate, endDateStr, joiningDate, dates, meta, holidayDates, userLeaves);
         })
       );
       return NextResponse.json([...realRecords, ...absentRowArrays.flat()].sort((a, b) => b.date.localeCompare(a.date)));
